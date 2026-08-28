@@ -26,6 +26,14 @@ namespace LockstepArena.Simulation.Tests
             }
         }
 
+        public static void NotEqual<T>(T unexpected, T actual)
+        {
+            if (EqualityComparer<T>.Default.Equals(unexpected, actual))
+            {
+                throw new InvalidOperationException($"Did not expect <{unexpected}>.");
+            }
+        }
+
         public static void Throws<TException>(Action body)
             where TException : Exception
         {

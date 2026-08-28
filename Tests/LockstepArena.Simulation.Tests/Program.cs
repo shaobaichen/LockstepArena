@@ -6,7 +6,7 @@ namespace LockstepArena.Simulation.Tests
     {
         private static int Main()
         {
-            TestCase[] tests = Combine(ContractTests.All, BattleSimulationTests.All);
+            TestCase[] tests = Combine(ContractTests.All, BattleSimulationTests.All, DeterminismTests.All);
             int failures = 0;
 
             foreach (TestCase test in tests)
