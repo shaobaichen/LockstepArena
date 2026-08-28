@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "LockstepArena.Simulation.Tests/1.0.0": {
+        "dependencies": {
+          "LockstepArena.Simulation": "1.0.0"
+        },
+        "runtime": {
+          "LockstepArena.Simulation.Tests.dll": {}
+        }
+      },
+      "LockstepArena.Simulation/1.0.0": {
+        "runtime": {
+          "LockstepArena.Simulation.dll": {
+            "assemblyVersion": "1.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "LockstepArena.Simulation.Tests/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "LockstepArena.Simulation/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
