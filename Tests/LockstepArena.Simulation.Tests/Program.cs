@@ -9,6 +9,7 @@ namespace LockstepArena.Simulation.Tests
             TestCase[] tests = Combine(
                 ActiveRosterTests.All,
                 ContractTests.All,
+                FrameCollectionTests.All,
                 BattleSimulationTests.All,
                 DeterminismTests.All);
             int failures = 0;

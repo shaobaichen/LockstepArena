@@ -9,13 +9,31 @@ namespace LockstepArena.Simulation
         {
             ulong hash = OffsetBasis;
             AddUInt32(ref hash, state.Tick);
-            AddInt32(ref hash, state.Player0.PositionX);
-            AddInt32(ref hash, state.Player0.PositionZ);
-            AddUInt16(ref hash, state.Player0.Aim);
-            AddInt32(ref hash, state.Player1.PositionX);
-            AddInt32(ref hash, state.Player1.PositionZ);
-            AddUInt16(ref hash, state.Player1.Aim);
+            AddUInt32(ref hash, checked((uint)state.PlayerCount));
+
+            for (int index = 0; index < state.PlayerCount; index++)
+            {
+                PlayerSlot slot = new PlayerSlot(index);
+                AddUInt64(ref hash, state.Roster.GetPlayerId(slot).Value);
+                PlayerState player = state.GetPlayerState(slot);
+                AddInt32(ref hash, player.PositionX);
+                AddInt32(ref hash, player.PositionZ);
+                AddUInt16(ref hash, player.Aim);
+            }
+
             return hash;
+        }
+
+        private static void AddUInt64(ref ulong hash, ulong value)
+        {
+            AddByte(ref hash, (byte)value);
+            AddByte(ref hash, (byte)(value >> 8));
+            AddByte(ref hash, (byte)(value >> 16));
+            AddByte(ref hash, (byte)(value >> 24));
+            AddByte(ref hash, (byte)(value >> 32));
+            AddByte(ref hash, (byte)(value >> 40));
+            AddByte(ref hash, (byte)(value >> 48));
+            AddByte(ref hash, (byte)(value >> 56));
         }
 
         private static void AddInt32(ref ulong hash, int value)

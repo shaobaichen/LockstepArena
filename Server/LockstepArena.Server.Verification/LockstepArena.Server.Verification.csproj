@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Packages\com.locksteparena.simulation\Runtime\LockstepArena.Simulation.csproj" />
-    <Compile Include="..\..\Packages\com.locksteparena.simulation\Tests\Editor\Gate2GoldenVector.cs"
-             Link="Gate2GoldenVector.cs" />
+    <Compile Include="..\..\Packages\com.locksteparena.simulation\Tests\Editor\Gate3GoldenVector.cs"
+             Link="Gate3GoldenVector.cs" />
   </ItemGroup>
 </Project>

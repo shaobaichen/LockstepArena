@@ -4,13 +4,8 @@ namespace LockstepArena.Simulation
 {
     public readonly struct InputFrame
     {
-        public InputFrame(uint tick, byte playerSlot, sbyte moveX, sbyte moveZ, ushort aim)
+        public InputFrame(uint tick, PlayerSlot playerSlot, sbyte moveX, sbyte moveZ, ushort aim)
         {
-            if (playerSlot > 1)
-            {
-                throw new ArgumentOutOfRangeException(nameof(playerSlot), "Player slot must be 0 or 1.");
-            }
-
             if (moveX < -1 || moveX > 1)
             {
                 throw new ArgumentOutOfRangeException(nameof(moveX), "Movement must be -1, 0, or 1.");
@@ -30,7 +25,7 @@ namespace LockstepArena.Simulation
 
         public uint Tick { get; }
 
-        public byte PlayerSlot { get; }
+        public PlayerSlot PlayerSlot { get; }
 
         public sbyte MoveX { get; }
 

@@ -10,68 +10,129 @@ namespace LockstepArena.Simulation.Tests
 
         public static TestCase[] All { get; } =
         {
-            new TestCase(nameof(EqualStatesHaveEqualDigests), EqualStatesHaveEqualDigests),
+            new TestCase(nameof(EqualVariablePlayerStatesHaveEqualDigests), EqualVariablePlayerStatesHaveEqualDigests),
             new TestCase(nameof(CanonicalStateChangesAlterDigest), CanonicalStateChangesAlterDigest),
-            new TestCase(nameof(GoldenDigestLocksFieldAndByteOrder), GoldenDigestLocksFieldAndByteOrder),
-            new TestCase(nameof(TwinSimulationsMatchDigestAtEveryTick), TwinSimulationsMatchDigestAtEveryTick),
-            new TestCase(nameof(InitialStateAndFrameHistoryRebuildFinalDigest), InitialStateAndFrameHistoryRebuildFinalDigest),
+            new TestCase(nameof(RosterIdentityAndOrderChangesAlterDigest), RosterIdentityAndOrderChangesAlterDigest),
+            new TestCase(nameof(GoldenDigestLocksVariableRosterFieldAndByteOrder), GoldenDigestLocksVariableRosterFieldAndByteOrder),
+            new TestCase(nameof(FourPlayerTwinSimulationsMatchDigestAtEveryTick), FourPlayerTwinSimulationsMatchDigestAtEveryTick),
+            new TestCase(nameof(InitialStateAndThreePlayerFrameHistoryRebuildFinalDigest), InitialStateAndThreePlayerFrameHistoryRebuildFinalDigest),
         };
 
-        private static void EqualStatesHaveEqualDigests()
+        private static void EqualVariablePlayerStatesHaveEqualDigests()
         {
-            BattleState first = new BattleState(
-                77,
+            BattleState first = new BattleState(77, Roster(90, 10, 70), new[]
+            {
                 new PlayerState(-2_300, 1_200, 456),
-                new PlayerState(4_500, -2_900, 65_000));
-            BattleState second = new BattleState(
-                77,
+                new PlayerState(4_500, -2_900, 65_000),
+                new PlayerState(300, -400, 12_345),
+            });
+            BattleState second = new BattleState(77, Roster(90, 10, 70), new[]
+            {
                 new PlayerState(-2_300, 1_200, 456),
-                new PlayerState(4_500, -2_900, 65_000));
+                new PlayerState(4_500, -2_900, 65_000),
+                new PlayerState(300, -400, 12_345),
+            });
 
             TestAssert.Equal(StateDigest.Compute(first), StateDigest.Compute(second));
         }
 
         private static void CanonicalStateChangesAlterDigest()
         {
-            BattleState baseline = new BattleState(
-                12,
+            ActiveRoster roster = Roster(90, 10, 70);
+            BattleState baseline = new BattleState(12, roster, new[]
+            {
                 new PlayerState(-100, 200, 300),
-                new PlayerState(400, -500, 600));
-            BattleState moved = new BattleState(
-                12,
+                new PlayerState(400, -500, 600),
+                new PlayerState(700, 800, 900),
+            });
+            BattleState moved = new BattleState(12, roster, new[]
+            {
                 new PlayerState(-99, 200, 300),
-                new PlayerState(400, -500, 600));
-            BattleState aimed = new BattleState(
-                12,
-                new PlayerState(-100, 200, 301),
-                new PlayerState(400, -500, 600));
+                new PlayerState(400, -500, 600),
+                new PlayerState(700, 800, 900),
+            });
+            BattleState aimed = new BattleState(12, roster, new[]
+            {
+                new PlayerState(-100, 200, 300),
+                new PlayerState(400, -500, 601),
+                new PlayerState(700, 800, 900),
+            });
+            BattleState nextTick = new BattleState(13, roster, new[]
+            {
+                new PlayerState(-100, 200, 300),
+                new PlayerState(400, -500, 600),
+                new PlayerState(700, 800, 900),
+            });
 
-            ulong baselineDigest = StateDigest.Compute(baseline);
-            TestAssert.NotEqual(baselineDigest, StateDigest.Compute(moved));
-            TestAssert.NotEqual(baselineDigest, StateDigest.Compute(aimed));
+            ulong digest = StateDigest.Compute(baseline);
+            TestAssert.NotEqual(digest, StateDigest.Compute(moved));
+            TestAssert.NotEqual(digest, StateDigest.Compute(aimed));
+            TestAssert.NotEqual(digest, StateDigest.Compute(nextTick));
         }
 
-        private static void GoldenDigestLocksFieldAndByteOrder()
+        private static void RosterIdentityAndOrderChangesAlterDigest()
         {
-            BattleState state = new BattleState(
-                0x01020304,
-                new PlayerState(-1, 0x01020304, 0xABCD),
-                new PlayerState(5_000, -3_000, 0xFFFF));
+            PlayerState[] players =
+            {
+                new PlayerState(-100, 200, 300),
+                new PlayerState(400, -500, 600),
+                new PlayerState(700, 800, 900),
+            };
+            BattleState baseline = new BattleState(12, Roster(90, 10, 70), players);
+            BattleState changedIdentity = new BattleState(12, Roster(90, 11, 70), players);
+            BattleState changedOrder = new BattleState(12, Roster(10, 90, 70), players);
+            BattleState changedCount = new BattleState(12, Roster(90, 10), new[]
+            {
+                players[0],
+                players[1],
+            });
 
-            TestAssert.Equal(0x6123AD83F7831D54UL, StateDigest.Compute(state));
+            ulong digest = StateDigest.Compute(baseline);
+            TestAssert.NotEqual(digest, StateDigest.Compute(changedIdentity));
+            TestAssert.NotEqual(digest, StateDigest.Compute(changedOrder));
+            TestAssert.NotEqual(digest, StateDigest.Compute(changedCount));
         }
 
-        private static void TwinSimulationsMatchDigestAtEveryTick()
+        private static void GoldenDigestLocksVariableRosterFieldAndByteOrder()
         {
-            BattleState initial = BattleState.CreateInitial();
-            BattleSimulation first = new BattleSimulation(initial);
-            BattleSimulation second = new BattleSimulation(initial);
+            ActiveRoster roster = new ActiveRoster(new[]
+            {
+                new PlayerId(0x0102030405060708UL),
+                new PlayerId(0x000000000000002AUL),
+                new PlayerId(0xFFEEDDCCBBAA0099UL),
+                new PlayerId(0x00000000000F4243UL),
+            });
+            BattleState state = new BattleState(1_000, roster, new[]
+            {
+                new PlayerState(0, -3_000, 13_086),
+                new PlayerState(0, 3_000, 8_699),
+                new PlayerState(-2_500, -2_000, 51_320),
+                new PlayerState(2_500, 2_000, 62_539),
+            });
+
+            TestAssert.Equal(0x89A7DD66F8D9E871UL, StateDigest.Compute(state));
+        }
+
+        private static void FourPlayerTwinSimulationsMatchDigestAtEveryTick()
+        {
+            ActiveRoster firstRoster = Roster(90, 10, 70, 20);
+            ActiveRoster secondRoster = Roster(90, 10, 70, 20);
+            PlayerState[] initialPlayers =
+            {
+                new PlayerState(-1_000, 0, 0),
+                new PlayerState(1_000, 0, 0),
+                new PlayerState(0, -1_000, 0),
+                new PlayerState(0, 1_000, 0),
+            };
+            BattleSimulation first = new BattleSimulation(BattleState.CreateInitial(firstRoster, initialPlayers));
+            BattleSimulation second = new BattleSimulation(BattleState.CreateInitial(secondRoster, initialPlayers));
+            int[] canonicalOrder = { 0, 1, 2, 3 };
+            int[] shuffledOrder = { 2, 0, 3, 1 };
 
             for (uint tick = 0; tick < TwinTickCount; tick++)
             {
-                CreateScriptedInputs(tick, out InputFrame player0, out InputFrame player1);
-                first.Step(new FrameData(player0, player1));
-                second.Step(new FrameData(player1, player0));
+                first.Step(CreateScriptedFrame(firstRoster, tick, canonicalOrder));
+                second.Step(CreateScriptedFrame(secondRoster, tick, shuffledOrder));
 
                 ulong firstDigest = StateDigest.Compute(first.State);
                 ulong secondDigest = StateDigest.Compute(second.State);
@@ -85,16 +146,23 @@ namespace LockstepArena.Simulation.Tests
             TestAssert.Equal((uint)TwinTickCount, first.State.Tick);
         }
 
-        private static void InitialStateAndFrameHistoryRebuildFinalDigest()
+        private static void InitialStateAndThreePlayerFrameHistoryRebuildFinalDigest()
         {
-            BattleState initial = BattleState.CreateInitial();
+            ActiveRoster roster = Roster(90, 10, 70);
+            PlayerState[] initialPlayers =
+            {
+                new PlayerState(-1_000, 0, 0),
+                new PlayerState(1_000, 0, 0),
+                new PlayerState(0, -1_000, 0),
+            };
+            BattleState initial = BattleState.CreateInitial(roster, initialPlayers);
             BattleSimulation original = new BattleSimulation(initial);
             List<FrameData> history = new List<FrameData>(HistoryTickCount);
+            int[] shuffledOrder = { 2, 0, 1 };
 
             for (uint tick = 0; tick < HistoryTickCount; tick++)
             {
-                CreateScriptedInputs(tick, out InputFrame player0, out InputFrame player1);
-                FrameData frame = new FrameData(player0, player1);
+                FrameData frame = CreateScriptedFrame(roster, tick, shuffledOrder);
                 history.Add(frame);
                 original.Step(frame);
             }
@@ -109,42 +177,37 @@ namespace LockstepArena.Simulation.Tests
             TestAssert.Equal(StateDigest.Compute(original.State), StateDigest.Compute(rebuilt.State));
         }
 
-        private static void CreateScriptedInputs(
-            uint tick,
-            out InputFrame player0,
-            out InputFrame player1)
+        private static FrameData CreateScriptedFrame(ActiveRoster roster, uint tick, int[] arrivalOrder)
         {
-            int phase = (int)(tick % 400);
-            sbyte player0X = 0;
-            sbyte player0Z = 0;
-            sbyte player1X = 0;
-            sbyte player1Z = 0;
-
-            if (phase < 100)
+            InputFrame[] canonical = new InputFrame[roster.Count];
+            for (int index = 0; index < canonical.Length; index++)
             {
-                player0X = 1;
-                player1X = -1;
-            }
-            else if (phase >= 150 && phase < 250)
-            {
-                player0X = -1;
-                player1X = 1;
-            }
-            else if (phase >= 250 && phase < 325)
-            {
-                player0Z = 1;
-                player1Z = -1;
-            }
-            else if (phase >= 325)
-            {
-                player0Z = -1;
-                player1Z = 1;
+                int movePhase = (int)((tick + (uint)index) % 3U);
+                int zPhase = (int)(((tick * 2U) + (uint)index) % 3U);
+                sbyte moveX = (sbyte)(movePhase - 1);
+                sbyte moveZ = (sbyte)(zPhase - 1);
+                ushort aim = unchecked((ushort)((tick * (uint)(97 + (index * 11))) + (uint)(index * 1_000)));
+                canonical[index] = new InputFrame(tick, new PlayerSlot(index), moveX, moveZ, aim);
             }
 
-            ushort player0Aim = unchecked((ushort)((tick * 997U) + 123U));
-            ushort player1Aim = unchecked((ushort)((tick * 619U) + 45_678U));
-            player0 = new InputFrame(tick, 0, player0X, player0Z, player0Aim);
-            player1 = new InputFrame(tick, 1, player1X, player1Z, player1Aim);
+            InputFrame[] received = new InputFrame[roster.Count];
+            for (int index = 0; index < received.Length; index++)
+            {
+                received[index] = canonical[arrivalOrder[index]];
+            }
+
+            return FrameData.Create(roster, tick, received);
+        }
+
+        private static ActiveRoster Roster(params ulong[] values)
+        {
+            PlayerId[] ids = new PlayerId[values.Length];
+            for (int index = 0; index < values.Length; index++)
+            {
+                ids[index] = new PlayerId(values[index]);
+            }
+
+            return new ActiveRoster(ids);
         }
     }
 }

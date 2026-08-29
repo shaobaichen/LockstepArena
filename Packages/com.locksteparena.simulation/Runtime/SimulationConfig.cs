@@ -10,9 +10,5 @@ namespace LockstepArena.Simulation
         public const int ArenaMaxX = 5_000;
         public const int ArenaMinZ = -3_000;
         public const int ArenaMaxZ = 3_000;
-
-        public const int Player0SpawnX = -1_000;
-        public const int Player1SpawnX = 1_000;
-        public const int PlayerSpawnZ = 0;
     }
 }
