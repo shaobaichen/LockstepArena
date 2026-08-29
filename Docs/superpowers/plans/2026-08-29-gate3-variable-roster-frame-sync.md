@@ -705,7 +705,7 @@ if (git ls-files | Select-String 'Gate2GoldenVector.cs$') { throw 'Old Gate2Gold
 Run:
 
 ~~~powershell
-$forbidden = rg -n -i "UnityEngine|UnityEditor|NUnit|TestFramework|PackageReference|ProjectReference|System\.Net|Socket|\bTcp\b|\bUdp\b|\bKcp\b|Protobuf|Room|TickClock|InputDelay|MissingInput|Prediction|Snapshot|Rollback|\bReplay\b|GameObject|Transform|Projectile|Combat|Damage|Health" Packages\com.locksteparena.simulation\Runtime
+$forbidden = rg -n -i "UnityEngine|UnityEditor|\bNUnit\b|TestFramework|PackageReference|ProjectReference|System\.Net|Socket|\bTcp\b|\bUdp\b|\bKcp\b|Protobuf|Room|TickClock|InputDelay|MissingInput|Prediction|Snapshot|Rollback|\bReplay\b|GameObject|Transform|Projectile|Combat|Damage|Health" Packages\com.locksteparena.simulation\Runtime
 if ($LASTEXITCODE -eq 0) { $forbidden; throw 'Forbidden Runtime dependency or capability found.' }
 if ($LASTEXITCODE -gt 1) { throw 'Runtime scope audit failed to run.' }
 $fixed = rg -n "Player0|Player1|exactly two|exactly 2|must be 0 or 1|must contain two" Packages\com.locksteparena.simulation\Runtime

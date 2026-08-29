@@ -1,6 +1,6 @@
 # Lockstep Arena — Gate 3 Variable-Roster Offline FrameSync
 
-> Status: architecture approved; planning approval pending
+> Status: implementation complete; pending independent Gate 3 approval
 >
 > Approved base: `af86372ed598bd17dc0e42c9fc3571225ed050d0`
 >
@@ -114,7 +114,6 @@ The resulting internal layout is always:
 ~~~text
 inputs[0] = Slot 0
 inputs[1] = Slot 1
-inputs[N-1] = Slot N-1
 inputs[N-1] = Slot N-1
 ~~~
 
@@ -397,3 +396,57 @@ An implementation may later be submitted for Gate 3 approval only when:
 3. the Gate 3 worktree is clean and the normal checkout was only inspected;
 4. the Handoff records exact commits, build/test outputs, Unity XML counts, named test, Golden state/digest, uniqueness/dependency/artifact/fixed-coupling/scope audits, and environmental observations;
 5. work stops without beginning any room, protocol, transport, timing, prediction, snapshot, rollback, replay, view, or combat gate.
+
+## 17. Implementation Evidence
+
+Gate 3 was implemented in `.worktrees/gate3-variable-roster-frame-sync` from approved base `af86372ed598bd17dc0e42c9fc3571225ed050d0`. The implementation commits before this evidence update are:
+
+- `f223f1aa3cc230f3549731097495362cfe33ca35` — immutable `PlayerId`, `PlayerSlot`, and `ActiveRoster`;
+- `a0fadc88cc873a3fe276888c85cc9829af6639ae` — variable-roster frame collection, Simulation and Digest migration, 38-test suite, and shared Gate 3 consumers;
+- `d841a054dedcc5bb5c7d534e83beccd6c594239a` — Unity-generated metadata for the four new Runtime source files.
+
+Fresh Release verification reported `0 warnings` and `0 errors` for each of:
+
+- `Packages/com.locksteparena.simulation/Runtime/LockstepArena.Simulation.csproj`;
+- `Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj`;
+- `Server/LockstepArena.Server.Verification/LockstepArena.Server.Verification.csproj`.
+
+The dependency-free .NET suite printed `RESULT 38/38 passed`. This includes canonical 2-, 3-, and 4-player frames, every specified strict-collector rejection, 10,000-tick per-tick twin digests, and 2,000-frame initial-state/history reconstruction. The offline Server consumer printed exactly:
+
+~~~text
+PASS Gate3GoldenVector Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+~~~
+
+Unity `6000.3.10f1` at `E:\unityhub\unity6.3\Editor\Unity.exe` ran the Gate 3 worktree with:
+
+~~~text
+-batchmode -runTests
+-projectPath <Gate 3 worktree>
+-testPlatform EditMode
+-assemblyNames LockstepArena.Simulation.Editor.Tests
+-testResults <temporary results.xml>
+-logFile <temporary editor.log>
+~~~
+
+Fresh NUnit XML reported `total=1 passed=1 failed=0`. The named test `LockstepArena.Simulation.Editor.Tests.UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector` was present with result `Passed`. Both the Unity test and Server process compiled and executed the one physical `Gate3GoldenVector.cs`, while independently asserting this final state:
+
+| Slot | PlayerId | X | Z | Aim |
+|---:|---:|---:|---:|---:|
+| 0 | `0x0102030405060708` | 0 | -3000 | 13086 |
+| 1 | `0x000000000000002A` | 0 | 3000 | 8699 |
+| 2 | `0xFFEEDDCCBBAA0099` | -2500 | -2000 | 51320 |
+| 3 | `0x00000000000F4243` | 2500 | 2000 | 62539 |
+
+Both consumers independently asserted digest `0x89A7DD66F8D9E871`.
+
+The final audits established:
+
+- each of the eleven production Runtime `.cs` files has exactly one tracked path under `Packages/com.locksteparena.simulation/Runtime/`, and `Gate3GoldenVector.cs` also has exactly one tracked path;
+- `Gate2GoldenVector.cs` is no longer tracked, and no copy/sync script, symlink, junction, precompiled Shared DLL, package `Runtime/bin`, or package `Runtime/obj` exists;
+- Runtime has no Unity, UnityEditor, test-framework, networking, Protobuf, room, timing, prediction, snapshot, rollback, replay, view, or combat dependency, and no production `Player0`, `Player1`, exactly-two-player rule, or slot-0/1 restriction;
+- ActiveRoster, FrameData, and BattleState expose no public array surface; their defensive-copy, range-check, structural-roster, atomic collector-reject, and atomic Simulation-step contracts are covered by the passing suite;
+- the Golden Vector contains no Unity/test/file/time/environment/random dependency and no expected final-state or expected-digest literal; those expected literals are present separately in both consumers;
+- `PlayerState.cs` retained approved blob `e90bd93a1c96c0eb36a1b9c74d4d3d8a062e2e32`;
+- Gate 3 changed nothing under `Assets/`, `ProjectSettings/`, or `Packages/manifest.json` relative to the approved base.
+
+Unity import serialization changes were inspected and restored only inside the Gate 3 worktree: the first run touched `Assets/Settings/Mobile_RPAsset.asset`, `ProjectSettings/EditorBuildSettings.asset`, and `ProjectSettings/ShaderGraphSettings.asset`; the final fresh run touched only `Assets/Settings/Mobile_RPAsset.asset`. None was committed. The normal checkout was never used for implementation or verification and still contains only the two pre-existing user-owned modifications named in Section 15.
