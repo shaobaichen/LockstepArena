@@ -68,7 +68,8 @@ namespace LockstepArena.Server.FrameSync.Tests
                 CoordinatorRejectTests.All,
                 CoordinatorPublicationTests.All,
                 CoordinatorHistoryTests.All,
-                CoordinatorTickLimitTests.All);
+                CoordinatorTickLimitTests.All,
+                CoordinatorDeterminismTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
