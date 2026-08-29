@@ -60,7 +60,7 @@ ExportedObj/
 *.VC.db
 
 # Authored Gate 1 .NET projects and their generated output
-!Source/LockstepArena.Simulation/LockstepArena.Simulation.csproj
+!Packages/com.locksteparena.simulation/Runtime/LockstepArena.Simulation.csproj
 !Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj
 [Bb]in/
 [Oo]bj/
