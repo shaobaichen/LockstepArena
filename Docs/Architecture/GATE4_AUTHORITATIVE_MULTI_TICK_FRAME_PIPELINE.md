@@ -1,6 +1,6 @@
 # Lockstep Arena — Gate 4 Offline Authoritative Multi-Tick Frame Pipeline
 
-> Status: design approved; implementation planning pending independent approval
+> Status: implementation complete; pending independent Gate 4 approval
 >
 > Approved base: `0137342be01d15ae52f437ef53a9fdd0f3437c85`
 >
@@ -312,3 +312,87 @@ The repository-wide `*.csproj` ignore rule currently matches both planned author
 ## 18. Exit Contract
 
 Gate 4 may be submitted for implementation approval only after the planning commit is pushed and independently approved. A later implementation may be submitted for final Gate approval only after every acceptance row passes, the implementation branch is pushed, the worktree is clean, and work stops before any Protobuf, networking, timing policy, room, prediction, recovery, view, combat, or Gate 5 work begins.
+
+## 19. Implementation Evidence
+
+Fresh final verification was completed on 2026-08-30 from the isolated Gate 4 worktree.
+
+### 19.1 Git Boundary
+
+- Approved Gate 3 base: `0137342be01d15ae52f437ef53a9fdd0f3437c85`.
+- Approved Gate 4 planning commit: `d86450446c5413bf1cb0cb835048bb47ef395d37`.
+- Server project and constructor contract: `1c8a5fb1c21d54467b8371dea96b039203c7e766`.
+- Strict per-Tick input routing: `b1049dc52cc557de2ae1ad8ba676a21badf0a103`.
+- Continuous atomic publication: `089e99834b4d9286ccd517adfd9e673b2600a8e5`.
+- Multi-Tick Golden evidence: `f26e2cb8e5a4d7d474a2db21c602189a2b078981`.
+- The implementation contains no committed change under `Packages/com.locksteparena.simulation/`, `Assets/`, `ProjectSettings/`, or `Packages/manifest.json` relative to the approved Gate 3 base.
+
+### 19.2 Fresh Release Builds
+
+All five approved deliverables were built separately with `-c Release` and reported zero warnings and zero errors:
+
+| Project | Warnings | Errors |
+|---|---:|---:|
+| `Packages/com.locksteparena.simulation/Runtime/LockstepArena.Simulation.csproj` | 0 | 0 |
+| `Server/LockstepArena.Server.FrameSync/LockstepArena.Server.FrameSync.csproj` | 0 | 0 |
+| `Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj` | 0 | 0 |
+| `Tests/LockstepArena.Server.FrameSync.Tests/LockstepArena.Server.FrameSync.Tests.csproj` | 0 | 0 |
+| `Server/LockstepArena.Server.Verification/LockstepArena.Server.Verification.csproj` | 0 | 0 |
+
+### 19.3 Fresh Runtime Evidence
+
+- Gate 3 Simulation regression: `RESULT 38/38 passed`.
+- Gate 4 Server FrameSync suite: `RESULT 32/32 passed`.
+- Gate 3 Server verifier: `PASS Gate3GoldenVector Tick=1000 Players=4 Digest=89A7DD66F8D9E871`.
+- Coordinator A non-empty publication batches: `4,4,4`.
+- Coordinator B non-empty publication batches: `1,3,1,3,1,3`.
+- Both flattened authoritative sequences: Tick `0..11`.
+- Both retained authoritative histories at capacity five: Tick `7..11`.
+- Both Simulations produced equal digests after every consumed authoritative Tick.
+- Final Tick: `12`.
+- Final Slot states: `(200,0,11001)`, `(-200,0,22002)`, `(0,200,33003)`, `(0,-200,44004)`.
+- Final Gate 4 digest: `0x5CFABE84CC00E1C3` for both runs.
+- A composition-failure test proves that a later `BattleSimulation.Step` exception does not roll back already committed Coordinator publication.
+
+### 19.4 Fresh Unity Evidence
+
+The unchanged Gate 3 Unity test was run from the Gate 4 worktree with:
+
+~~~text
+E:\unityhub\unity6.3\Editor\Unity.exe
+-batchmode -runTests
+-projectPath E:\unityproject\LockstepArena\.worktrees\gate4-authoritative-frame-pipeline
+-testPlatform EditMode
+-assemblyNames LockstepArena.Simulation.Editor.Tests
+~~~
+
+Final NUnit XML: `C:\Users\张晨旭\AppData\Local\Temp\locksteparena-gate4-final-verification-results.xml`.
+
+- Unity version: `6000.3.10f1`.
+- Unity exit code: `0`.
+- XML counts: `total=1`, `passed=1`, `failed=0`.
+- Named test: `LockstepArena.Simulation.Editor.Tests.UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector`.
+- Named result: `Passed`.
+
+The first successful post-license run automatically touched these worktree-local serialization paths, which were inspected and restored individually:
+
+- `Assets/Settings/Mobile_RPAsset.asset`;
+- `ProjectSettings/EditorBuildSettings.asset`;
+- `ProjectSettings/ShaderGraphSettings.asset`.
+
+The final verification run automatically upgraded only `Assets/Settings/Mobile_RPAsset.asset`; its diff was inspected and that exact path was restored. No broad reset or clean command was used. The Gate 4 worktree was clean afterward.
+
+### 19.5 Final Audits
+
+- Atomic publication: continuous frames are planned locally, copied pending/history containers are constructed, then the three live fields are replaced at the end.
+- No incremental publication mutation: the live pending Dictionary and history Queue are not removed/enqueued/dequeued while scanning, and the live Tick is not incremented during planning.
+- Dictionary ordering: pending storage is used only for exact Tick lookup; no enumeration, sorting, Keys, or Values operation controls publication.
+- Shared ownership: the Coordinator does not call `FrameData.Create`, `TryGetSlot`, or `GetPlayerId`, and does not own `BattleSimulation` or `StateDigest`.
+- Dependencies and scope: no Unity, NUnit, network, protocol, room/session, clock/timeout, missing-input policy, prediction, rollback, Replay, View, or Combat dependency exists in the production Server assembly. The approved `GetAuthoritativeHistorySnapshot` container-copy API remains distinct from out-of-scope Simulation Snapshot functionality.
+- Copy boundary: publication uses a new array, copied Dictionary, and copied Queue while sharing immutable FrameData and existing pending collectors; no deep clone exists.
+- Source boundary: exactly one tracked `AuthoritativeFrameCoordinator.cs` exists, and both authored project files are tracked.
+- Link/script/artifact boundary: no tracked or filesystem symlink/junction, Gate 4 script, package `bin`, package `obj`, or package DLL exists.
+- Golden separation: the actual vector contains no expected batch/history/final-state/digest literals; consumer tests independently own all frozen expectations.
+- Normal checkout preservation: it still contains only the user-owned modifications to `Assets/Settings/Mobile_RPAsset.asset` and `ProjectSettings/ShaderGraphSettings.asset`.
+
+Gate 4 remains strictly offline. Protobuf, networking, time and missing-input policies, rooms, prediction, recovery, View, Combat, and Gate 5 work remain absent.
