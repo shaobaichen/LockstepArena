@@ -75,21 +75,60 @@ namespace LockstepArena.Server.FrameSync
                 collector.Submit(submittedPlayerId, input);
             }
 
-            if (input.Tick != NextPublishTick || !collector.IsComplete)
+            List<FrameData> frames = new List<FrameData>();
+            ulong scanTick = NextPublishTick;
+            while (scanTick < uint.MaxValue)
+            {
+                uint tick = (uint)scanTick;
+                if (!_pendingByTick.TryGetValue(tick, out StrictFrameCollector? pending) ||
+                    !pending.IsComplete)
+                {
+                    break;
+                }
+
+                frames.Add(pending.GetCompletedFrame());
+                if (tick == uint.MaxValue - 1U)
+                {
+                    scanTick = uint.MaxValue;
+                    break;
+                }
+
+                scanTick++;
+            }
+
+            if (frames.Count == 0)
             {
                 return Array.Empty<FrameData>();
             }
 
-            FrameData frame = collector.GetCompletedFrame();
-            _pendingByTick.Remove(NextPublishTick);
-            _authoritativeHistory.Enqueue(frame);
-            while (_authoritativeHistory.Count > _authoritativeHistoryCapacity)
+            FrameData[] publication = frames.ToArray();
+            uint nextPublishTickAfterBatch = checked((uint)scanTick);
+
+            Dictionary<uint, StrictFrameCollector> pendingAfter =
+                new Dictionary<uint, StrictFrameCollector>(_pendingByTick);
+            for (int index = 0; index < publication.Length; index++)
             {
-                _authoritativeHistory.Dequeue();
+                if (!pendingAfter.Remove(publication[index].Tick))
+                {
+                    throw new InvalidOperationException(
+                        "A planned publication Tick was absent from pending storage.");
+                }
             }
 
-            NextPublishTick = checked(NextPublishTick + 1U);
-            return new[] { frame };
+            Queue<FrameData> historyAfter = new Queue<FrameData>(_authoritativeHistory);
+            for (int index = 0; index < publication.Length; index++)
+            {
+                historyAfter.Enqueue(publication[index]);
+                while (historyAfter.Count > _authoritativeHistoryCapacity)
+                {
+                    historyAfter.Dequeue();
+                }
+            }
+
+            _pendingByTick = pendingAfter;
+            _authoritativeHistory = historyAfter;
+            NextPublishTick = nextPublishTickAfterBatch;
+            return publication;
         }
 
         public FrameData[] GetAuthoritativeHistorySnapshot()

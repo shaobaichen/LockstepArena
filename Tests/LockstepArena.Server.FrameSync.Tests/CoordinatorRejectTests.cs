@@ -85,12 +85,14 @@ namespace LockstepArena.Server.FrameSync.Tests
             FrameData[] publication = coordinator.Submit(
                 roster.GetPlayerId(new PlayerSlot(1)),
                 CoordinatorTestData.CreateInput(100U, 1));
-            TestAssert.Equal(1, publication.Length);
+            TestAssert.Equal(2, publication.Length);
             TestAssert.Equal(100U, publication[0].Tick);
-            TestAssert.Equal(101U, coordinator.NextPublishTick);
+            TestAssert.Equal(101U, publication[1].Tick);
+            TestAssert.Equal(102U, coordinator.NextPublishTick);
             FrameData[] history = coordinator.GetAuthoritativeHistorySnapshot();
-            TestAssert.Equal(1, history.Length);
+            TestAssert.Equal(2, history.Length);
             TestAssert.Equal(100U, history[0].Tick);
+            TestAssert.Equal(101U, history[1].Tick);
         }
 
         private static AuthoritativeFrameCoordinator CreateCoordinator(ActiveRoster roster)
