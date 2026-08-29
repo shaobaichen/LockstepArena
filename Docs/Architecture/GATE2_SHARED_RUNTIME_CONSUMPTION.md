@@ -1,6 +1,6 @@
 # Lockstep Arena — Gate 2 Shared Runtime Consumption
 
-> Status: Scope and design approved in principle by the Owner; implementation is blocked pending independent planning approval
+> Status: Implementation complete; pending independent Gate 2 approval
 >
 > Approved base: `a4cdf3ef3a23e587b1a6ab9a6e0c2cfc93e8abf0`
 >
@@ -264,3 +264,65 @@ Implementation may later be submitted for Gate 2 approval only when:
 3. both the Gate 2 worktree and normal checkout have been checked without touching user changes;
 4. a Handoff names the exact branch, commit, base, test commands, XML counts, Server output, uniqueness audit, scope audit, and known limitations;
 5. work stops before any Gate 3 capability begins.
+
+## 14. Implementation Evidence
+
+Gate 2 was implemented on `codex/gate2-shared-runtime-consumption` from the approved planning commit `6f93f9d56d34d49f3c2b1c9f5f60b05a8bd165dc`, whose direct parent is the approved Gate 1 commit `a4cdf3ef3a23e587b1a6ab9a6e0c2cfc93e8abf0`. The implementation checkpoints are:
+
+- `27e333accf8ab078f616231a5ab36fbb7c0d6436` — embedded package becomes the only production source home;
+- `6c2b7e9a90fd84c70176126b755adae8aa9a4ea0` — one pure Golden Vector and the offline Server consumer;
+- `f5e0d77ee33c0c2ceace65469cbe5e011c8eb1c6` — Unity EditMode consumer and Unity package metadata.
+
+Fresh Release builds of the Runtime Simulation project, the Gate 1 test executable, and the Server Verification executable each completed with `0 warnings` and `0 errors`.
+
+The Gate 1 regression executable printed every original test name and ended with:
+
+~~~text
+RESULT 15/15 passed
+~~~
+
+The offline .NET Server Verification process independently executed the shared 1,000-tick vector and printed:
+
+~~~text
+PASS Gate2GoldenVector Tick=1000 Digest=04633D1F8699DE68
+~~~
+
+Unity `6000.3.10f1` at `E:\unityhub\unity6.3\Editor\Unity.exe` ran the Gate 2 worktree with these test-runner arguments:
+
+~~~text
+-batchmode -runTests
+-projectPath <Gate 2 worktree>
+-testPlatform EditMode
+-assemblyNames LockstepArena.Simulation.Editor.Tests
+-testResults <temporary results.xml>
+-logFile <temporary Editor log>
+~~~
+
+The final process exit code was `0`, and the fresh NUnit XML was parsed rather than inferred from the exit code:
+
+~~~text
+total=1 passed=1 failed=0 skipped=0
+test=LockstepArena.Simulation.Editor.Tests.UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector
+result=Passed
+~~~
+
+The final Editor log contained no C# compilation error, aborted batch-mode run, or duplicate DLL/asmdef conflict. Both the Unity test and Server process asserted the complete approved state and digest literals.
+
+Physical-source and boundary audits produced these results:
+
+- `BattleSimulation.cs`, `BattleState.cs`, `FrameData.cs`, `InputFrame.cs`, `PlayerState.cs`, `SimulationConfig.cs`, and `StateDigest.cs` each have exactly one tracked path under `Packages/com.locksteparena.simulation/Runtime/`;
+- each of those seven files has the same Git blob as its Gate 1 source, proving Gate 2 moved rather than changed the production rules;
+- `Gate2GoldenVector.cs` has exactly one tracked path under package `Tests/Editor/` and is directly compiled by both consumers;
+- the old `Source/LockstepArena.Simulation/` tree has no tracked file;
+- the package and Server trees contain no tracked symlink, junction, DLL, copy script, or synchronization script, and the package contains no physical DLL at handoff;
+- Runtime contains exactly seven physical `.cs` files; its csproj has no explicit `Compile`, `PackageReference`, or `ProjectReference`, and `dotnet list package` reports no package for `netstandard2.1`;
+- Runtime dependency and capability scans found no UnityEngine, UnityEditor, NUnit, Test Framework, networking, Protobuf, combat, prediction, snapshot, rollback, or replay dependency;
+- `Gate2GoldenVector.cs` contains no NUnit, Unity, file I/O, environment, time, random, or serialization dependency;
+- `Packages/packages-lock.json` changed only to record `com.locksteparena.simulation` with source `embedded`; `Packages/manifest.json` did not change;
+- `Assets/`, `ProjectSettings/`, and `Packages/manifest.json` have no Gate 2 commit diff, and the full Gate 2 range passes `git diff --check`.
+
+The co-located .NET project normally creates ignored `Runtime/bin` and `Runtime/obj` directories. Unity scans physical package contents regardless of Git ignore rules, so these generated directories were removed before each clean Unity run. The final Unity evidence therefore compiled the asmdef source without consuming a .NET build DLL; no cleanup or synchronization script was added. Runtime `bin` and `obj` were absent from the package after the final audit.
+
+Unity 6000.3 automatically serialized legacy render-pipeline settings while importing this isolated worktree. Those unrelated worktree-only edits were explicitly restored after each run and were never staged or committed. The normal checkout was not used for testing and its user-owned changes to `Assets/Settings/Mobile_RPAsset.asset` and `ProjectSettings/ShaderGraphSettings.asset` remained untouched.
+
+The later multiplayer requirement remains deferred correctly: Gate 2 added no production fixed-two-player dependency because all seven production source blobs are unchanged from Gate 1. Player 0 / Player 1 usage added by Gate 2 exists only in the approved verification vector and its two assertion consumers. Variable active-player roster and canonical PlayerSlot / PlayerId ordering remain future-gate work.
