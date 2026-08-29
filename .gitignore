@@ -65,6 +65,7 @@ ExportedObj/
 !Server/LockstepArena.Server.Verification/LockstepArena.Server.Verification.csproj
 [Bb]in/
 [Oo]bj/
+/.artifacts/
 
 # Unity3D generated meta files
 *.pidb.meta

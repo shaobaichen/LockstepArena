@@ -1,6 +1,6 @@
 # Lockstep Arena — Gate 2 Shared Runtime Consumption
 
-> Status: Implementation complete; pending independent Gate 2 approval
+> Status: Conditional PASS remediation complete; pending final independent Gate 2 approval
 >
 > Approved base: `a4cdf3ef3a23e587b1a6ab9a6e0c2cfc93e8abf0`
 >
@@ -32,6 +32,7 @@ Compilation alone is insufficient. Both consumers must execute all 1,000 ticks.
 Packages/com.locksteparena.simulation/
 ├── package.json
 ├── Runtime/
+│   ├── Directory.Build.props
 │   ├── LockstepArena.Simulation.asmdef
 │   ├── LockstepArena.Simulation.csproj
 │   ├── BattleSimulation.cs
@@ -119,6 +120,8 @@ The Unity test assembly explicitly references this assembly by name.
 - no explicit Compile item outside its own directory.
 
 Because the project file is physically inside `Runtime/`, the .NET SDK's default compile glob includes only `.cs` files in Runtime and its descendants. Sibling `Tests/`, package metadata, Unity test code, and Server code cannot enter the production Simulation assembly.
+
+`Runtime/Directory.Build.props` sets the standard .NET SDK `ArtifactsPath` early enough to redirect both final and intermediate output to the repository-root `.artifacts/` directory. This props file is scoped to the Runtime project directory; it does not establish a repository-wide build system. The `.artifacts/` directory is ignored by Git and remains outside the Unity package.
 
 ## 6. Single Golden Vector Contract
 
@@ -321,7 +324,9 @@ Physical-source and boundary audits produced these results:
 - `Packages/packages-lock.json` changed only to record `com.locksteparena.simulation` with source `embedded`; `Packages/manifest.json` did not change;
 - `Assets/`, `ProjectSettings/`, and `Packages/manifest.json` have no Gate 2 commit diff, and the full Gate 2 range passes `git diff --check`.
 
-The co-located .NET project normally creates ignored `Runtime/bin` and `Runtime/obj` directories. Unity scans physical package contents regardless of Git ignore rules, so these generated directories were removed before each clean Unity run. The final Unity evidence therefore compiled the asmdef source without consuming a .NET build DLL; no cleanup or synchronization script was added. Runtime `bin` and `obj` were absent from the package after the final audit.
+The Conditional PASS review identified that default SDK output created `Runtime/bin` and `Runtime/obj`, which Unity could scan. The scoped `Directory.Build.props` now sets `ArtifactsPath` to `$(MSBuildThisFileDirectory)..\..\..\.artifacts`. The evaluated Release paths are repository-root `.artifacts/bin/LockstepArena.Simulation/release/` and `.artifacts/obj/LockstepArena.Simulation/release/`; neither is under the embedded package. No cleanup, copy, or synchronization script was added.
+
+After applying this output isolation, the complete .NET and Unity validation was repeated without manually deleting any package build artifact. All three Release builds reported `0 warnings` and `0 errors`, Gate 1 remained `15/15`, Server printed the approved digest line, and Unity XML again reported `total=1 passed=1 failed=0` for the named Golden Vector test. Immediate physical audits after .NET build and after Unity execution both confirmed that the package contained no `Runtime/bin`, `Runtime/obj`, or DLL while the redirected Simulation DLL existed under `.artifacts/`.
 
 Unity 6000.3 automatically serialized legacy render-pipeline settings while importing this isolated worktree. Those unrelated worktree-only edits were explicitly restored after each run and were never staged or committed. The normal checkout was not used for testing and its user-owned changes to `Assets/Settings/Mobile_RPAsset.asset` and `ProjectSettings/ShaderGraphSettings.asset` remained untouched.
 
