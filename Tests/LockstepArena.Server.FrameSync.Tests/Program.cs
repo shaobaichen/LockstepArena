@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LockstepArena.Simulation;
 
 namespace LockstepArena.Server.FrameSync.Tests
 {
@@ -60,7 +61,11 @@ namespace LockstepArena.Server.FrameSync.Tests
     {
         private static int Main()
         {
-            TestCase[] tests = Combine(CoordinatorContractTests.All);
+            TestCase[] tests = Combine(
+                CoordinatorContractTests.All,
+                CoordinatorRosterTests.All,
+                CoordinatorWindowTests.All,
+                CoordinatorRejectTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
@@ -97,6 +102,32 @@ namespace LockstepArena.Server.FrameSync.Tests
             }
 
             return combined;
+        }
+    }
+
+    internal static class CoordinatorTestData
+    {
+        private static readonly ulong[] PlayerIdValues = { 91UL, 17UL, 73UL, 44UL };
+
+        public static ActiveRoster CreateRoster(int playerCount)
+        {
+            PlayerId[] playerIds = new PlayerId[playerCount];
+            for (int index = 0; index < playerCount; index++)
+            {
+                playerIds[index] = new PlayerId(PlayerIdValues[index]);
+            }
+
+            return new ActiveRoster(playerIds);
+        }
+
+        public static InputFrame CreateInput(uint tick, int slot)
+        {
+            return new InputFrame(
+                tick,
+                new PlayerSlot(slot),
+                (sbyte)((slot % 3) - 1),
+                (sbyte)(((slot + 1) % 3) - 1),
+                checked((ushort)(1000 + slot)));
         }
     }
 }
