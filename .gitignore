@@ -63,6 +63,8 @@ ExportedObj/
 !Packages/com.locksteparena.simulation/Runtime/LockstepArena.Simulation.csproj
 !Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj
 !Server/LockstepArena.Server.Verification/LockstepArena.Server.Verification.csproj
+!Server/LockstepArena.Server.FrameSync/LockstepArena.Server.FrameSync.csproj
+!Tests/LockstepArena.Server.FrameSync.Tests/LockstepArena.Server.FrameSync.Tests.csproj
 [Bb]in/
 [Oo]bj/
 /.artifacts/
