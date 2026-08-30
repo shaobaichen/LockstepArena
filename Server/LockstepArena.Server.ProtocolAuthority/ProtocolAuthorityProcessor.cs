@@ -1,4 +1,7 @@
 using System;
+using Google.Protobuf;
+using LockstepArena.Protocol;
+using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.FrameSync;
 using LockstepArena.Simulation;
 
@@ -30,5 +33,33 @@ namespace LockstepArena.Server.ProtocolAuthority
         public BattleState ServerState => _serverSimulation.State;
 
         public uint NextPublishTick => _coordinator.NextPublishTick;
+
+        public byte[][] SubmitPlayerInputPayload(byte[] completePayload)
+        {
+            if (completePayload is null)
+            {
+                throw new ArgumentNullException(nameof(completePayload));
+            }
+
+            PlayerInputSubmissionMessage wire =
+                PlayerInputSubmissionMessage.Parser.ParseFrom(completePayload);
+            (PlayerId submittedPlayerId, InputFrame input) = ProtocolMapper.ToDomain(wire);
+            FrameData[] publication = _coordinator.Submit(submittedPlayerId, input);
+
+            if (publication.Length == 0)
+            {
+                return Array.Empty<byte[]>();
+            }
+
+            var payloads = new byte[publication.Length][];
+            for (var index = 0; index < publication.Length; index++)
+            {
+                FrameData frame = publication[index];
+                _serverSimulation.Step(frame);
+                payloads[index] = ProtocolMapper.ToWire(frame).ToByteArray();
+            }
+
+            return payloads;
+        }
     }
 }

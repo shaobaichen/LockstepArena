@@ -69,7 +69,10 @@ namespace LockstepArena.Server.ProtocolAuthority.Tests
     {
         private static int Main()
         {
-            TestCase[] tests = ProcessorBootstrapTests.All;
+            TestCase[] tests = Combine(
+                ProcessorBootstrapTests.All,
+                ProtocolAuthorityRejectionTests.All,
+                ProtocolAuthorityPublicationTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
@@ -87,6 +90,25 @@ namespace LockstepArena.Server.ProtocolAuthority.Tests
 
             Console.WriteLine($"RESULT {tests.Length - failures}/{tests.Length} passed");
             return failures == 0 ? 0 : 1;
+        }
+
+        private static TestCase[] Combine(params TestCase[][] groups)
+        {
+            int count = 0;
+            foreach (TestCase[] group in groups)
+            {
+                count += group.Length;
+            }
+
+            TestCase[] combined = new TestCase[count];
+            int offset = 0;
+            foreach (TestCase[] group in groups)
+            {
+                Array.Copy(group, 0, combined, offset, group.Length);
+                offset += group.Length;
+            }
+
+            return combined;
         }
     }
 }
