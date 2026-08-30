@@ -23,6 +23,14 @@
       "source": "embedded",
       "dependencies": {}
     },
+    "com.locksteparena.protocol": {
+      "version": "file:com.locksteparena.protocol",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.locksteparena.simulation": "0.1.0"
+      }
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,

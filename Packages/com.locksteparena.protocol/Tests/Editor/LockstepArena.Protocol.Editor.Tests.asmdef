@@ -1,0 +1,23 @@
+{
+  "name": "LockstepArena.Protocol.Editor.Tests",
+  "rootNamespace": "LockstepArena.Protocol.Editor.Tests",
+  "references": [
+    "LockstepArena.Simulation"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "Google.Protobuf.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
