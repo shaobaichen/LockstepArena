@@ -438,3 +438,147 @@ The planning commit contains only this architecture document and the approved Im
 Gate 5 implementation may be submitted for final approval only after dependency preflight, all acceptance rows, fresh final verification, evidence documentation, remote SHA equality, and a clean worktree. Work stops before networking or Gate 6 work begins.
 
 Implementation evidence is intentionally absent from the planning commit and may be added only after fresh implementation verification succeeds.
+
+## 21. Implementation Evidence
+
+Gate 5 implementation and final verification completed on 2026-08-30 in the approved isolated worktree. The approved base is `cd09b89739284d5fe36e1d5c825a3fd1578e6768`; the planning commit is `3d51fc61fa0226d788d51cbdcd404ae5fb89246f`; and the verified implementation HEAD before this evidence-only commit is `08f0e94e26df637122b71f6ce5c9bd9d6cdfccac`.
+
+The five implementation slices are:
+
+```text
+57bc18c build: preflight Unity protobuf runtime dependency
+e801dc3 build: generate shared protobuf wire contracts
+e874e50 feat: map protobuf roster and input domain values
+bf1d1d0 feat: map authoritative protobuf frames
+08f0e94 test: prove dual-runtime protobuf round trip
+```
+
+### 21.1 Dependency Preflight and Provenance
+
+The isolated Unity dependency preflight passed before schema, generated DTO, mapper, or Golden implementation began. Unity 6000.3.10f1 loaded and exercised `Google.Protobuf 3.36.0` using the package's `lib/netstandard2.0/Google.Protobuf.dll` without a missing `System.Memory`, missing `System.Runtime.CompilerServices.Unsafe`, assembly version conflict, `FileNotFoundException`, `TypeLoadException`, or Google.Protobuf load failure. No transitive managed DLL, NuGetForUnity package, alternate Protobuf implementation, or disabled reference validation was added.
+
+Fresh final provenance checks reported:
+
+```text
+Google.Protobuf package: 3.36.0
+Tracked DLL SHA-256: 436C5DF3C47CA325AE0F2D2F57BB924C224CD81977CCFE0141699C5B2000988E
+Assembly identity: Google.Protobuf, Version=3.36.0.0, Culture=neutral, PublicKeyToken=a7d26565bac4d604
+Tracked DLL size: 501248 bytes
+License: BSD-3-Clause
+Declared netstandard2.0 dependencies: System.Memory >= 4.5.3; System.Runtime.CompilerServices.Unsafe >= 4.5.2
+```
+
+The recomputed SHA-256 and assembly identity exactly match `Third Party Notices.md`. The intentional Google.Protobuf DLL is the only tracked DLL and the only DLL under the Protocol package.
+
+### 21.2 Pinned Code Generation
+
+Fresh deterministic regeneration used:
+
+```text
+Grpc.Tools: 2.83.0
+Resolved protoc: C:\Users\张晨旭\.nuget\packages\grpc.tools\2.83.0\tools\windows_x64\protoc.exe
+Bundled protoc version: libprotoc 35.1
+Resolved protoc SHA-256: EA33FADF8FC93D8445D3F39A98E265224F53B1B5DB4196DE0B03B5724120F767
+PROTOBUF_PROTOC override: absent
+Protobuf_ProtocFullPath override: absent
+```
+
+The generator contract remains `PrivateAssets=all`, `GrpcServices=None`, `CompileOutputs=false`, and `OutputOptions=file_extension=.g.cs`, with one explicit proto Include. Regeneration produced exactly one tracked `.g.cs` from exactly one tracked `.proto`; no gRPC stub was generated. The generated file SHA-256 was `4E33AA2ACBE634572B8BBF3D99F6F9549B103AE62CB60F8566BB81E9FE6F09D1` before and after regeneration, and the Schema plus Generated `git diff --exit-code` passed. The permitted empty CodeGen tool assembly was emitted only below `.artifacts/`.
+
+### 21.3 Fresh Release Builds and .NET Results
+
+All eight approved projects were built individually in Release configuration. Every build completed with 0 warnings and 0 errors:
+
+```text
+Packages/com.locksteparena.simulation/Runtime/LockstepArena.Simulation.csproj
+Server/LockstepArena.Server.FrameSync/LockstepArena.Server.FrameSync.csproj
+Server/LockstepArena.Server.Verification/LockstepArena.Server.Verification.csproj
+Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj
+Tests/LockstepArena.Server.FrameSync.Tests/LockstepArena.Server.FrameSync.Tests.csproj
+Tools/LockstepArena.Protocol.CodeGen/LockstepArena.Protocol.CodeGen.csproj
+Packages/com.locksteparena.protocol/Runtime/LockstepArena.Protocol.csproj
+Tests/LockstepArena.Server.Protocol.Tests/LockstepArena.Server.Protocol.Tests.csproj
+```
+
+Fresh runtime results were:
+
+```text
+Gate 3 Simulation suite: RESULT 38/38 passed
+Gate 4 FrameSync suite: RESULT 32/32 passed
+Gate 3 Server Golden: PASS Gate3GoldenVector Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+Gate 5 Protocol suite: RESULT 35/35 passed
+```
+
+The Gate 5 suite independently asserts that wire input orders `2,0,3,1` and `1,3,0,2` produce different serialized bytes, map to canonical Slot `0,1,2,3` Frames, and produce equal Domain Digest after every Tick. Both 12-Tick runs finished at:
+
+```text
+Tick = 12
+Slot0 = X 200,  Z 0,    Aim 11001
+Slot1 = X -200, Z 0,    Aim 22002
+Slot2 = X 0,    Z 200,  Aim 33003
+Slot3 = X 0,    Z -200, Aim 44004
+Digest = 0x5CFABE84CC00E1C3
+```
+
+The pure shared Golden vector contains actual inputs and actual results only. The .NET and Unity consumers each own their expected state and Digest literals. StateDigest continues to consume only canonical Domain state and never Protobuf bytes.
+
+### 21.4 Fresh Unity Results
+
+Both final Unity jobs used Unity 6000.3.10f1 (`e35f0c77bd8e`) in the Gate 5 worktree and returned process exit code 0. NUnit XML, rather than process exit alone, supplied the acceptance evidence.
+
+Gate 5 used only assembly filter `LockstepArena.Protocol.Editor.Tests`:
+
+```text
+XML: .artifacts/gate5/final/gate5-results.xml
+Log: .artifacts/gate5/final/gate5-editor.log
+total=2 passed=2 failed=0
+GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads = Passed
+UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector = Passed
+```
+
+Gate 3 was executed separately through `LockstepArena.Simulation.Editor.Tests` with its named Golden filter:
+
+```text
+XML: .artifacts/gate5/final/gate3-results.xml
+Log: .artifacts/gate5/final/gate3-editor.log
+total=1 passed=1 failed=0
+UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector = Passed
+```
+
+Each Unity run generated the same worktree-local `Assets/Settings/Mobile_RPAsset.asset` serialization upgrade. Each exact diff was inspected and restored by its specific path. No broad reset or clean was used, and the final Gate 5 worktree has no Assets or ProjectSettings modification.
+
+### 21.5 Boundary and Topology Audits
+
+Committed-diff checks relative to the approved Gate 4 baseline reported zero changed paths under:
+
+```text
+Packages/com.locksteparena.simulation/
+Server/LockstepArena.Server.FrameSync/
+Assets/
+ProjectSettings/
+Packages/manifest.json
+```
+
+`Packages/packages-lock.json` contains only the added embedded `com.locksteparena.protocol` entry, whose dependency is `com.locksteparena.simulation: 0.1.0`; it matches the Protocol package manifest. Protocol csproj, asmdef, and package metadata depend on Simulation, while Simulation and Server FrameSync contain no Protocol or Google.Protobuf dependency.
+
+Topology and artifact audits confirmed:
+
+- exactly one tracked `.proto`;
+- exactly one tracked generated `.g.cs`;
+- exactly one physical `Gate5ProtocolGoldenVector.cs`, directly compiled by Unity and the .NET Protocol tests;
+- no generated gRPC service stubs;
+- no copy, sync, or codegen wrapper scripts;
+- no tracked symlink or junction;
+- no package `bin` or `obj` directory;
+- no precompiled LockstepArena DLL in the Protocol package;
+- no unapproved third-party DLL;
+- no TCP, UDP, KCP, Socket, Room, Login, Session, TickClock, timeout, Prediction, Snapshot, Rollback, Replay, Combat, or other excluded production type.
+
+The ordinary checkout preservation audit reported exactly the two user-owned changes and nothing else:
+
+```text
+ M Assets/Settings/Mobile_RPAsset.asset
+ M ProjectSettings/ShaderGraphSettings.asset
+```
+
+Gate 5 therefore remains an offline, additive Protocol-to-Domain boundary proof. It adds neither transport nor any Gate 6 capability.
