@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package locksteparena.protocol;
+
+option csharp_namespace = "LockstepArena.Protocol.Wire";
+
+message RosterEntryMessage {
+  uint32 player_slot = 1;
+  uint64 player_id = 2;
+}
+
+message ActiveRosterMessage {
+  repeated RosterEntryMessage players = 1;
+}
+
+message InputFrameMessage {
+  uint32 tick = 1;
+  uint32 player_slot = 2;
+  sint32 move_x = 3;
+  sint32 move_z = 4;
+  uint32 aim = 5;
+}
+
+message PlayerInputSubmissionMessage {
+  uint64 submitted_player_id = 1;
+  InputFrameMessage input = 2;
+}
+
+message AuthoritativeFrameMessage {
+  uint32 tick = 1;
+  ActiveRosterMessage roster = 2;
+  repeated InputFrameMessage inputs = 3;
+}

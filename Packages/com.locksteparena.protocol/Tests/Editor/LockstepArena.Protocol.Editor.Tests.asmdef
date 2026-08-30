@@ -2,7 +2,8 @@
   "name": "LockstepArena.Protocol.Editor.Tests",
   "rootNamespace": "LockstepArena.Protocol.Editor.Tests",
   "references": [
-    "LockstepArena.Simulation"
+    "LockstepArena.Simulation",
+    "LockstepArena.Protocol"
   ],
   "includePlatforms": [
     "Editor"
