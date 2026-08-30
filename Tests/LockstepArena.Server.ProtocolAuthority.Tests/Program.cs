@@ -72,7 +72,8 @@ namespace LockstepArena.Server.ProtocolAuthority.Tests
             TestCase[] tests = Combine(
                 ProcessorBootstrapTests.All,
                 ProtocolAuthorityRejectionTests.All,
-                ProtocolAuthorityPublicationTests.All);
+                ProtocolAuthorityPublicationTests.All,
+                ProtocolAuthorityFaultTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {

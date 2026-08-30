@@ -11,6 +11,7 @@ namespace LockstepArena.Server.ProtocolAuthority
     {
         private readonly AuthoritativeFrameCoordinator _coordinator;
         private readonly BattleSimulation _serverSimulation;
+        private bool _faulted;
 
         public ProtocolAuthorityProcessor(
             BattleState initialState,
@@ -36,6 +37,11 @@ namespace LockstepArena.Server.ProtocolAuthority
 
         public byte[][] SubmitPlayerInputPayload(byte[] completePayload)
         {
+            if (_faulted)
+            {
+                throw new InvalidOperationException("The protocol authority processor is faulted.");
+            }
+
             if (completePayload is null)
             {
                 throw new ArgumentNullException(nameof(completePayload));
@@ -51,15 +57,23 @@ namespace LockstepArena.Server.ProtocolAuthority
                 return Array.Empty<byte[]>();
             }
 
-            var payloads = new byte[publication.Length][];
-            for (var index = 0; index < publication.Length; index++)
+            try
             {
-                FrameData frame = publication[index];
-                _serverSimulation.Step(frame);
-                payloads[index] = ProtocolMapper.ToWire(frame).ToByteArray();
-            }
+                var payloads = new byte[publication.Length][];
+                for (var index = 0; index < publication.Length; index++)
+                {
+                    FrameData frame = publication[index];
+                    _serverSimulation.Step(frame);
+                    payloads[index] = ProtocolMapper.ToWire(frame).ToByteArray();
+                }
 
-            return payloads;
+                return payloads;
+            }
+            catch
+            {
+                _faulted = true;
+                throw;
+            }
         }
     }
 }

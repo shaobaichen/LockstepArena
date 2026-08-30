@@ -71,6 +71,8 @@ namespace LockstepArena.Server.ProtocolAuthority.Tests
             new TestCase(nameof(ThreePlayerCompleteFutureFrameWaitsForGap), ThreePlayerCompleteFutureFrameWaitsForGap),
             new TestCase(nameof(GapFillReturnsContinuousPayloadTicks), GapFillReturnsContinuousPayloadTicks),
             new TestCase(nameof(SuccessfulBatchCatchesServerStateUpToAuthority), SuccessfulBatchCatchesServerStateUpToAuthority),
+            new TestCase(nameof(NonEmptyOutputOwnsItsOuterContainer), NonEmptyOutputOwnsItsOuterContainer),
+            new TestCase(nameof(PayloadBuffersAreDistinctAndCallerMutationCannotAffectServerState), PayloadBuffersAreDistinctAndCallerMutationCannotAffectServerState),
         };
 
         private static void TwoPlayerIncompleteFrameReturnsEmpty()
@@ -136,6 +138,37 @@ namespace LockstepArena.Server.ProtocolAuthority.Tests
 
             TestAssert.Equal(102U, processor.ServerState.Tick);
             TestAssert.Equal(102U, processor.NextPublishTick);
+        }
+
+        private static void NonEmptyOutputOwnsItsOuterContainer()
+        {
+            ActiveRoster roster = ProtocolAuthorityTestData.CreateRoster(2);
+            ProtocolAuthorityProcessor processor = ProtocolAuthorityTestData.CreateProcessor(roster, 100U, 1U);
+
+            byte[][] first = ProtocolAuthorityTestData.CompleteTick(processor, roster, 100U);
+            byte[][] second = ProtocolAuthorityTestData.CompleteTick(processor, roster, 101U);
+
+            TestAssert.Equal(1, first.Length);
+            TestAssert.Equal(1, second.Length);
+            TestAssert.True(!ReferenceEquals(first, second));
+        }
+
+        private static void PayloadBuffersAreDistinctAndCallerMutationCannotAffectServerState()
+        {
+            ActiveRoster roster = ProtocolAuthorityTestData.CreateRoster(2);
+            ProtocolAuthorityProcessor processor = ProtocolAuthorityTestData.CreateProcessor(roster, 100U, 1U);
+            ProtocolAuthorityTestData.CompleteTick(processor, roster, 101U);
+
+            byte[][] output = ProtocolAuthorityTestData.CompleteTick(processor, roster, 100U);
+            ulong digestBeforeMutation = StateDigest.Compute(processor.ServerState);
+
+            TestAssert.Equal(2, output.Length);
+            TestAssert.True(!ReferenceEquals(output[0], output[1]));
+            output[0][0] ^= 0xFF;
+            output[0] = output[1];
+
+            TestAssert.Equal(digestBeforeMutation, StateDigest.Compute(processor.ServerState));
+            TestAssert.Equal(102U, processor.ServerState.Tick);
         }
     }
 
