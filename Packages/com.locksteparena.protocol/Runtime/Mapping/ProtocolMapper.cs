@@ -110,6 +110,75 @@ namespace LockstepArena.Protocol
             return (new PlayerId(wire.SubmittedPlayerId), ToDomainInput(wire.Input));
         }
 
+        public static AuthoritativeFrameMessage ToWire(FrameData frame)
+        {
+            if (frame is null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            var wire = new AuthoritativeFrameMessage
+            {
+                Tick = frame.Tick,
+                Roster = ToWire(frame.Roster),
+            };
+            for (int index = 0; index < frame.InputCount; index++)
+            {
+                wire.Inputs.Add(ToWire(frame.GetInput(new PlayerSlot(index))));
+            }
+
+            return wire;
+        }
+
+        public static FrameData ToDomain(
+            AuthoritativeFrameMessage wire,
+            ActiveRoster expectedRoster)
+        {
+            if (wire is null)
+            {
+                throw new ArgumentNullException(nameof(wire));
+            }
+
+            if (expectedRoster is null)
+            {
+                throw new ArgumentNullException(nameof(expectedRoster));
+            }
+
+            if (wire.Roster is null)
+            {
+                throw new ProtocolMappingException("Wire authoritative frame must contain a roster.");
+            }
+
+            ActiveRoster wireRoster = ToDomain(wire.Roster);
+            if (!wireRoster.HasSameStructure(expectedRoster))
+            {
+                throw new ProtocolMappingException("Wire authoritative frame roster does not match the expected roster.");
+            }
+
+            var inputs = new InputFrame[wire.Inputs.Count];
+            for (int index = 0; index < inputs.Length; index++)
+            {
+                InputFrameMessage input = wire.Inputs[index];
+                if (input is null)
+                {
+                    throw new ProtocolMappingException("Wire authoritative frame cannot contain a null input.");
+                }
+
+                inputs[index] = ToDomainInput(input);
+            }
+
+            try
+            {
+                return FrameData.Create(expectedRoster, wire.Tick, inputs);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ProtocolMappingException(
+                    "Wire authoritative frame violates the Simulation frame contract.",
+                    exception);
+            }
+        }
+
         private static InputFrameMessage ToWire(InputFrame input)
         {
             return new InputFrameMessage
