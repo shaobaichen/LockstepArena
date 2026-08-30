@@ -69,18 +69,60 @@
 - Consumes: `BattleState`, `BattleSimulation`, and `AuthoritativeFrameCoordinator` constructors from the approved base.
 - Produces: the final constructor, `ServerState`, and `NextPublishTick`; submission behavior is added in Task 2.
 
-- [ ] **Step 1: Reconfirm isolation and exact baseline**
+- [ ] **Step 1: Reconfirm the final approved Planning HEAD and lineage**
 
-Run:
+Required implementation start state:
+
+```text
+Branch:
+codex/gate6-protocol-authority-composition
+
+HEAD:
+the final independently approved Planning amendment commit
+
+HEAD direct parent / Planning foundation:
+9ec1f2c63ae804be74b266a111cf060ddce6036b
+
+Planning foundation direct parent / Approved Base:
+72764ebcd2f0fbfa9f74ad95e4e61bf12c9709b2
+
+Approved Base remains ancestor / merge-base:
+72764ebcd2f0fbfa9f74ad95e4e61bf12c9709b2
+
+Gate 6 worktree:
+clean
+```
+
+Run these checks before making any implementation change:
 
 ```powershell
-git branch --show-current
-git rev-parse HEAD
-git status --short
+$planningFoundation = '9ec1f2c63ae804be74b266a111cf060ddce6036b'
+$approvedBase = '72764ebcd2f0fbfa9f74ad95e4e61bf12c9709b2'
+
+if ((git branch --show-current) -ne 'codex/gate6-protocol-authority-composition') {
+    throw 'Wrong Gate 6 branch.'
+}
+
+if ((git rev-parse HEAD^) -ne $planningFoundation) {
+    throw 'Gate 6 implementation must start from the final approved Planning amendment commit.'
+}
+
+if ((git rev-parse "$planningFoundation^") -ne $approvedBase) {
+    throw 'Gate 6 Planning foundation direct parent does not match the approved Gate 5 baseline.'
+}
+
+if ((git merge-base HEAD $approvedBase) -ne $approvedBase) {
+    throw 'Approved Gate 5 baseline must remain the Gate 6 merge-base.'
+}
+
+if ((git status --porcelain).Length -ne 0) {
+    throw 'Gate 6 worktree must be clean.'
+}
+
 git -C E:\unityproject\LockstepArena status --short
 ```
 
-Require the Gate 6 branch, exact approved base, a clean Gate 6 worktree, and only the two user-owned ordinary-checkout changes.
+Require the exact lineage above and only the two user-owned ordinary-checkout changes. Do not checkout or reset the implementation worktree to the Approved Base: the Approved Base is the regression/diff comparison baseline and ancestor, not the implementation start HEAD.
 
 - [ ] **Step 2: Add exactly two authored-project ignore exceptions**
 
