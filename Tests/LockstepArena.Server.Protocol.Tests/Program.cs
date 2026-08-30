@@ -72,7 +72,8 @@ namespace LockstepArena.Server.Protocol.Tests
                 ProtocolParserContractTests.All,
                 ActiveRosterProtocolTests.All,
                 InputFrameProtocolTests.All,
-                AuthoritativeFrameProtocolTests.All);
+                AuthoritativeFrameProtocolTests.All,
+                ProtocolDeterminismTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
