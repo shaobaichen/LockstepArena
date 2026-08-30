@@ -68,6 +68,8 @@ ExportedObj/
 !Packages/com.locksteparena.protocol/Runtime/LockstepArena.Protocol.csproj
 !Tools/LockstepArena.Protocol.CodeGen/LockstepArena.Protocol.CodeGen.csproj
 !Tests/LockstepArena.Server.Protocol.Tests/LockstepArena.Server.Protocol.Tests.csproj
+!Server/LockstepArena.Server.ProtocolAuthority/LockstepArena.Server.ProtocolAuthority.csproj
+!Tests/LockstepArena.Server.ProtocolAuthority.Tests/LockstepArena.Server.ProtocolAuthority.Tests.csproj
 [Bb]in/
 [Oo]bj/
 /.artifacts/
