@@ -73,7 +73,8 @@ namespace LockstepArena.Server.ProtocolAuthority.Tests
                 ProcessorBootstrapTests.All,
                 ProtocolAuthorityRejectionTests.All,
                 ProtocolAuthorityPublicationTests.All,
-                ProtocolAuthorityFaultTests.All);
+                ProtocolAuthorityFaultTests.All,
+                ProtocolAuthorityDeterminismTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
