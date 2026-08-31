@@ -401,3 +401,148 @@ Exact Base: 72764ebcd2f0fbfa9f74ad95e4e61bf12c9709b2
 The planning commit contains only this architecture document and the approved implementation plan. No `.gitignore`, project, production, test, package, Unity, generated, dependency, or configuration implementation change is permitted before independent Planning PASS.
 
 Implementation evidence is intentionally absent from the planning commit. After planning is pushed, work stops until independent approval.
+
+## 18. Implementation Evidence
+
+Gate 6 was implemented and verified in the isolated worktree on 2026-08-31. The approved comparison baseline remained:
+
+```text
+72764ebcd2f0fbfa9f74ad95e4e61bf12c9709b2
+```
+
+The approved planning commits and implementation checkpoints were:
+
+```text
+9ec1f2c63ae804be74b266a111cf060ddce6036b docs: plan Gate 6 protocol authority composition
+f9e4ee65de5ccc7037453d4672e9e54a679fd5c0 docs: amend Gate 6 implementation start state
+d44ee6a463f763429c64c21e1c59482d0d0ddba8 build: add server protocol authority projects
+f1abb1ef042156d4359b7039a36a21eb5cce2e1c feat: compose protobuf inputs into authority outputs
+29022e3a11a5667d3e071e4953c87b2aab073078 feat: contain post-publication authority failures
+5fdfe98f1b0caaec7c769751de16e78975ba3fb7 test: prove offline protocol authority composition
+```
+
+### 18.1 Fresh Pinned Protocol Regeneration
+
+The final verification began from clean implementation HEAD `5fdfe98f1b0caaec7c769751de16e78975ba3fb7`. Both `PROTOBUF_PROTOC` and `Protobuf_ProtocFullPath` overrides were absent. Fresh deterministic regeneration used:
+
+```text
+Grpc.Tools: 2.83.0
+Resolved protoc: C:\Users\张晨旭\.nuget\packages\grpc.tools\2.83.0\tools\windows_x64\protoc.exe
+Bundled protoc version: libprotoc 35.1
+Resolved protoc SHA-256: EA33FADF8FC93D8445D3F39A98E265224F53B1B5DB4196DE0B03B5724120F767
+Proto files: 1
+Tracked generated .g.cs files: 1
+Physical generated .g.cs files: 1
+Generated Git blob: 32993ff553600d4fec0a1e2275f50317afda1fd5
+Tracked Git blob: 32993ff553600d4fec0a1e2275f50317afda1fd5
+```
+
+The CodeGen rebuild completed with 0 warnings and 0 errors. Schema plus Generated `git diff --exit-code` passed. The generated output remained the one tracked physical source and no global PATH protoc or override was used.
+
+### 18.2 Fresh Release Builds and .NET Results
+
+All ten approved projects were built individually in Release configuration. Every build completed with 0 warnings and 0 errors:
+
+```text
+Packages/com.locksteparena.simulation/Runtime/LockstepArena.Simulation.csproj
+Server/LockstepArena.Server.FrameSync/LockstepArena.Server.FrameSync.csproj
+Server/LockstepArena.Server.Verification/LockstepArena.Server.Verification.csproj
+Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj
+Tests/LockstepArena.Server.FrameSync.Tests/LockstepArena.Server.FrameSync.Tests.csproj
+Tools/LockstepArena.Protocol.CodeGen/LockstepArena.Protocol.CodeGen.csproj
+Packages/com.locksteparena.protocol/Runtime/LockstepArena.Protocol.csproj
+Tests/LockstepArena.Server.Protocol.Tests/LockstepArena.Server.Protocol.Tests.csproj
+Server/LockstepArena.Server.ProtocolAuthority/LockstepArena.Server.ProtocolAuthority.csproj
+Tests/LockstepArena.Server.ProtocolAuthority.Tests/LockstepArena.Server.ProtocolAuthority.Tests.csproj
+```
+
+Fresh runtime results were:
+
+```text
+Gate 3 Simulation: RESULT 38/38 passed
+Gate 4 FrameSync: RESULT 32/32 passed
+Gate 5 Protocol: RESULT 35/35 passed
+Gate 6 ProtocolAuthority: RESULT 24/24 passed
+Gate 3 Server Golden: Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+```
+
+The Gate 6 named Golden tests independently verified the three Client post-Step Digests:
+
+```text
+State Tick 101: D95809E1EB5CDDAA
+State Tick 102: A96B83267DD72A7D
+State Tick 103: 386C4BB11A7EB7E0
+```
+
+The final Server and Client states both reached Tick 103 with `NextPublishTick == 103`:
+
+```text
+Slot0 = X -300, Z 100,  Aim 10102
+Slot1 = X 300,  Z -100, Aim 20102
+Slot2 = X 100,  Z -300, Aim 30102
+Slot3 = X -100, Z 300,  Aim 40102
+Final Digest = 0x386C4BB11A7EB7E0
+```
+
+The approved and alternate submission orders produced the same canonical authoritative Domain Frame sequence and final Server state. The pure `Gate6GapFillGoldenVector.cs` contains none of the expected state or Digest literals; those literals remain only in the independent consumer tests.
+
+### 18.3 Composition, Ownership, and Sticky-Fault Evidence
+
+The 24-test suite proves:
+
+- null, malformed Protobuf, mapper, old/future Tick, ownership, and duplicate-submission failures occur before authority publication and do not fault the Processor;
+- incomplete input returns `Array.Empty<byte[]>()`, while a gap fill returns one independent payload per published Frame in Coordinator order;
+- output arrays and per-Frame byte buffers are independently owned, and caller mutation cannot affect retained Server state;
+- after non-empty authority publication, a later Server `Step` failure rethrows its original exception, leaves authority advanced, returns no partial output, and sets the private sticky fault;
+- the faulted Processor rejects the next call with `InvalidOperationException` before even null-payload validation;
+- the fault test locates the unique private `BattleSimulation` field by type and does not freeze a private field name or require a production test hook.
+
+Production remains one `ProtocolAuthorityProcessor` with exactly three private fields: the Coordinator, Server Simulation, and sticky fault flag. Its public surface is the constructor, `ServerState`, `NextPublishTick`, and `SubmitPlayerInputPayload`. It consumes the Coordinator publication array in order and serializes every immutable Frame independently.
+
+### 18.4 Fresh Unity NUnit Evidence
+
+Both final Unity jobs used Unity 6000.3.10f1 (`e35f0c77bd8e`) in the Gate 6 worktree. Each log recorded `Test run completed. Exiting with code 0 (Ok).` Acceptance was based on fresh NUnit XML rather than process launch or exit alone.
+
+Gate 5 ran only assembly `LockstepArena.Protocol.Editor.Tests`:
+
+```text
+XML: .artifacts/gate6/final-resume/gate5-results.xml
+Log: .artifacts/gate6/final-resume/gate5-editor.log
+total=2 passed=2 failed=0 result=Passed
+GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads = Passed
+UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector = Passed
+```
+
+Gate 3 ran assembly `LockstepArena.Simulation.Editor.Tests` with the named Golden filter:
+
+```text
+XML: .artifacts/gate6/final-resume/gate3-results.xml
+Log: .artifacts/gate6/final-resume/gate3-editor.log
+total=1 passed=1 failed=0 result=Passed
+UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector = Passed
+```
+
+After the first run, the exact Unity-generated diffs to `Assets/Settings/Mobile_RPAsset.asset`, `ProjectSettings/EditorBuildSettings.asset`, and `ProjectSettings/ShaderGraphSettings.asset` were inspected and restored individually. After the second run, the exact `Assets/Settings/Mobile_RPAsset.asset` serialization upgrade was inspected and restored individually. No broad reset or clean was used.
+
+### 18.5 Final Boundary and Scope Audits
+
+Relative to the approved baseline, committed and working-tree checks reported zero changes under Simulation, Server FrameSync, Protocol, Assets, ProjectSettings, `Packages/manifest.json`, and `Packages/packages-lock.json`. The `.gitignore` diff contains only the two exact authored Gate 6 csproj exceptions.
+
+The final audits also confirmed:
+
+- production has direct references only to Protocol, Server FrameSync, and Simulation;
+- exactly one Gate 6 production class and one production assembly were added;
+- no package, asmdef, solution, Directory.Build.props, generated source, third-party dependency, DLL, script, symlink, junction, or Client production assembly was added;
+- no package-local `bin`, `obj`, or LockstepArena DLL exists;
+- no `InternalsVisibleTo`, injectable serializer, callback, observer, interface, factory, DI, router, handler framework, event bus, middleware, transaction, retry, recovery, or other speculative abstraction was introduced;
+- no TCP, UDP, KCP, Socket, framing, Room, Login, Session, TickClock, InputDelay, timeout, missing-input replacement, Prediction, Snapshot, Rollback, Replay, reconnect, heartbeat, Unity View, or Combat implementation exists;
+- all three corrected Digest values are present and none of the three rejected Digest values occurs in Architecture, Planning, production, tests, or evidence.
+
+The final ordinary-checkout audit still reported exactly the two user-owned changes and nothing else:
+
+```text
+ M Assets/Settings/Mobile_RPAsset.asset
+ M ProjectSettings/ShaderGraphSettings.asset
+```
+
+Gate 6 remains strictly offline and stops at protocol-aware authority composition. Gate 7 work has not begun.
