@@ -62,7 +62,10 @@ namespace LockstepArena.StreamFraming.Tests
     {
         private static int Main()
         {
-            TestCase[] tests = EncoderContractTests.All;
+            TestCase[] tests = Combine(
+                EncoderContractTests.All,
+                DecoderContractTests.All,
+                StreamSegmentationTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
@@ -80,6 +83,25 @@ namespace LockstepArena.StreamFraming.Tests
 
             Console.WriteLine($"RESULT {tests.Length - failures}/{tests.Length} passed");
             return failures == 0 ? 0 : 1;
+        }
+
+        private static TestCase[] Combine(params TestCase[][] groups)
+        {
+            int count = 0;
+            foreach (TestCase[] group in groups)
+            {
+                count += group.Length;
+            }
+
+            TestCase[] combined = new TestCase[count];
+            int offset = 0;
+            foreach (TestCase[] group in groups)
+            {
+                Array.Copy(group, 0, combined, offset, group.Length);
+                offset += group.Length;
+            }
+
+            return combined;
         }
     }
 }
