@@ -8,6 +8,10 @@
 
 **Tech Stack:** C# 9/netstandard2.1 production, C# 12/net8.0 dependency-free test runner, Unity 6000.3.10f1 EditMode tests, NUnit through Unity TestAssemblies, Git worktrees, MSBuild SDK projects.
 
+**Spec:** `Docs/Architecture/GATE7_OFFLINE_LENGTH_PREFIXED_STREAM_FRAMING.md`
+
+The Architecture document is authoritative whenever abbreviated task wording could otherwise be interpreted more than one way.
+
 ---
 
 ## 1. Frozen implementation boundary
@@ -313,9 +317,9 @@ The actual vector must not contain expected state or digest constants. Each test
 - [ ] Write and register the four exact Gate 6 Composition tests first, referencing a not-yet-created vector API.
 - [ ] Run the Gate 7 test project and capture the expected RED compile failure caused only by the missing vector.
 - [ ] Implement the smallest test-only actual vector using the exact roster, Tick 100 initial state, all twelve logical inputs, frozen submission order, `maxPayloadLength=4096`, and both approved bidirectional segmentation patterns from Sections 5 and 6.
-- [ ] For each client submission: serialize its complete protobuf payload, encode it as one framing payload, segment through a reusable receive buffer, recover it on the server decoder, and call the existing Gate 6 `ProtocolAuthorityProcessor` once per recovered payload.
-- [ ] For each independent authority payload returned by the Processor: frame independently, segment the server-to-client stream, decode complete payloads, parse/map, and step the independent client Simulation in order.
-- [ ] Keep expected batch shape, per-Tick digests, final state, final digest, and alternate-order equality literals in the four test consumers—not in the actual vector.
+- [ ] For every submission, serialize the complete protobuf payload and encode it as one independent length-prefixed frame. Concatenate all framed submissions, in the frozen submission order, into one continuous client-to-server byte stream. Apply the approved segmentation pattern across that continuous stream without respecting protobuf or frame boundaries. Feed every segment in order through one server decoder instance for that run, then submit each recovered complete payload to the frozen Gate 6 `ProtocolAuthorityProcessor` in recovered order.
+- [ ] Symmetrically, frame every authoritative payload independently, concatenate all of those frames into one continuous server-to-client byte stream, segment that continuous stream without respecting frame boundaries, feed every segment through one client decoder instance for that run, then parse, map, and Step each recovered payload in order.
+- [ ] Keep expected batch shape, per-Tick digests, final state, final digest, and alternate-segmentation equality assertions in the four test consumers—not in the actual vector. The alternate run preserves the exact logical submission and payload sequence and changes only byte-stream segmentation.
 - [ ] Run the Gate 7 suite and require exact `RESULT 32/32 passed`.
 - [ ] Require authoritative Tick 100/101/102 order, client digests `D95809E1EB5CDDAA`, `A96B83267DD72A7D`, `386C4BB11A7EB7E0`, and the approved final State Tick 103.
 - [ ] Run Gate 3 `38/38`, Gate 4 `32/32`, Gate 5 `35/35`, Gate 6 `24/24`, and Gate 3 Server Golden `89A7DD66F8D9E871`.
@@ -392,7 +396,7 @@ The actual vector must not contain expected state or digest constants. Each test
   - Gate 7 framed Gate 6 final Digest: `386C4BB11A7EB7E0`
 - [ ] Run three separate Unity 6000.3.10f1 EditMode jobs with fresh result files. Parse each NUnit XML rather than relying on exit code:
   - Gate 7 assembly `LockstepArena.StreamFraming.Editor.Tests`: total=1, passed=1, failed=0, named `UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden` result `Passed`.
-  - Gate 5 assembly `LockstepArena.Protocol.Editor.Tests`: total=2, passed=2, failed=0, both named Gate 5 tests `Passed`.
+  - Gate 5 assembly `LockstepArena.Protocol.Editor.Tests`: total=2, passed=2, failed=0; `GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads` and `UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector` both `Passed`.
   - Gate 3 named `UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector`: total>=1, failed=0, named result `Passed`.
 - [ ] After every Unity run, inspect serialization changes and restore only confirmed worktree-local Unity automation changes. Never use broad reset/clean.
 - [ ] Audit frozen-base committed diffs:
