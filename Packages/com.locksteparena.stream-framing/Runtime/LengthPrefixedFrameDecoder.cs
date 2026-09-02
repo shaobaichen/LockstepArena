@@ -11,6 +11,7 @@ namespace LockstepArena.StreamFraming
         private int _prefixCount;
         private byte[]? _payload;
         private int _payloadCount;
+        private bool _faulted;
 
         public LengthPrefixedFrameDecoder(int maxPayloadLength)
         {
@@ -24,6 +25,11 @@ namespace LockstepArena.StreamFraming
 
         public byte[][] Feed(byte[] buffer, int offset, int count)
         {
+            if (_faulted)
+            {
+                throw new InvalidOperationException("The decoder is faulted.");
+            }
+
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
@@ -67,6 +73,7 @@ namespace LockstepArena.StreamFraming
                     _prefixCount = 0;
                     if (declaredLength > (uint)_maxPayloadLength)
                     {
+                        _faulted = true;
                         throw new InvalidDataException("Declared payload length exceeds the configured maximum.");
                     }
 

@@ -65,7 +65,8 @@ namespace LockstepArena.StreamFraming.Tests
             TestCase[] tests = Combine(
                 EncoderContractTests.All,
                 DecoderContractTests.All,
-                StreamSegmentationTests.All);
+                StreamSegmentationTests.All,
+                DecoderFaultTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
