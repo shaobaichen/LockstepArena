@@ -66,7 +66,8 @@ namespace LockstepArena.StreamFraming.Tests
                 EncoderContractTests.All,
                 DecoderContractTests.All,
                 StreamSegmentationTests.All,
-                DecoderFaultTests.All);
+                DecoderFaultTests.All,
+                Gate7ProtocolAuthorityCompositionTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
