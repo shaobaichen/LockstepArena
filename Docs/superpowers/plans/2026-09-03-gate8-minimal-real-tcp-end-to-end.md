@@ -15,7 +15,8 @@
 - Frozen comparison base: `0a73d924944a192c16c12260447c63272b727899`.
 - Branch: `codex/gate8-real-tcp-e2e`.
 - Worktree: `.worktrees/gate8-real-tcp-e2e`.
-- Implementation starts from the exact Planning HEAD independently approved for this branch, not by resetting or checking out the frozen base. The frozen base remains the direct Planning parent and diff/regression comparison baseline.
+- Initial Planning commit: `75b203b32827e359290eaba12a3247191490665f`.
+- Implementation starts from the exact final amended Planning HEAD independently approved for this branch, not by resetting or checking out either the Initial Planning commit or frozen base. The final Planning HEAD's direct parent is Initial Planning; Initial Planning's direct parent is the frozen base. The frozen base remains the diff/regression comparison baseline.
 - The worktree must be clean and local Planning HEAD must equal remote Planning HEAD before Task 1.
 - The ordinary checkout must retain only its two user-owned modifications:
 
@@ -55,15 +56,24 @@ if ([string]::IsNullOrWhiteSpace($remotePlanningHead) -or $localPlanningHead -ne
 }
 ```
 
-- [ ] Require the Planning commit's direct parent and merge-base to be the frozen Gate 7 base, with a clean worktree:
+- [ ] Require the two-commit Planning chain, frozen-base merge-base, and clean worktree:
 
 ```powershell
 $frozenBase = '0a73d924944a192c16c12260447c63272b727899'
-if ((git rev-parse HEAD^) -ne $frozenBase) {
-    throw 'Gate 8 Planning HEAD must have the frozen Gate 7 baseline as direct parent.'
+$initialPlanning = '75b203b32827e359290eaba12a3247191490665f'
+if ((git rev-parse HEAD^) -ne $initialPlanning) {
+    throw 'Final Gate 8 Planning HEAD must have Initial Planning as direct parent.'
+}
+if ((git rev-parse "$initialPlanning^") -ne $frozenBase) {
+    throw 'Initial Gate 8 Planning must have the frozen Gate 7 baseline as direct parent.'
 }
 if ((git merge-base HEAD $frozenBase) -ne $frozenBase) {
     throw 'Frozen Gate 7 baseline is not the Gate 8 merge-base.'
+}
+$ahead = [int](git rev-list --count "$frozenBase..HEAD")
+$behind = [int](git rev-list --count "HEAD..$frozenBase")
+if ($ahead -ne 2 -or $behind -ne 0) {
+    throw 'Frozen Base to final Gate 8 Planning must be exactly two commits ahead and zero behind.'
 }
 if ((git status --porcelain).Length -ne 0) {
     throw 'Gate 8 worktree must be clean.'
@@ -77,6 +87,8 @@ if ((git status --porcelain).Length -ne 0) {
 Docs/Architecture/GATE8_MINIMAL_REAL_TCP_END_TO_END.md
 Docs/superpowers/plans/2026-09-03-gate8-minimal-real-tcp-end-to-end.md
 ```
+
+Use `git diff --name-only $frozenBase HEAD` and reject any third path; the Amendment may modify only the Plan while the cumulative committed diff remains the same two documents.
 
 - [ ] Read the authoritative Spec completely before implementation and confirm the Plan contains no unresolved marker or obsolete pre-amendment contract.
 
@@ -176,7 +188,7 @@ RealTcpRoundTripMatchesApprovedAuthoritySequenceStatesAndDigests
   - Test 3 owns byte-for-byte ordered equality of the 12 original/recovered submission payloads.
   - Test 4 owns output counts `0` for calls 1-11 and `3` for call 12, independent authority payload buffers, and authoritative Frame Ticks 100/101/102.
   - Test 5 owns `ClientReadCallCount > 1` plus byte-for-byte ordered equality of the three original/recovered authoritative payloads; it does not assert an individual Read size.
-  - Test 8 owns intermediate Client states/Digests, complete final state, `NextPublishTick`, and Server/Client equality.
+  - Test 8 owns two independent Golden executions, field-for-field equality of their authoritative Domain Frame sequences, exact intermediate Client states/Digests, complete final state, `NextPublishTick`, and Server/Client equality. It does not compare ephemeral ports or repeat endpoint, Read-count, payload-byte, output-count, payload-ownership, or literal authority-Tick assertions owned by Tests 1-5.
 - [ ] Run a Release build before creating `LoopbackTcpGoldenVector.cs`. Require compilation failure caused by the missing `LoopbackTcpGoldenVector` / `LoopbackTcpGoldenResult` only. A project-reference, syntax, or runner failure is not the intended RED.
 
 ### Minimal implementation
@@ -231,6 +243,35 @@ Tick100: Slot 3
 - [ ] Stop Client reading after three recovered payloads. A zero-byte Read before three throws `EndOfStreamException`.
 - [ ] Parse/map each recovered payload with the independent Client roster, Step the Client Simulation, and capture actual Frames, Client states, Digests, final Server/Client state, and NextPublishTick.
 - [ ] Keep the vector free of expected state/Digest literals, expected result arrays, assertions, pass/fail code, file/time/environment/random input, and copied Gate 6/Gate 7 test helpers.
+- [ ] In Test 8, call `LoopbackTcpGoldenVector.Run()` twice. Treat both calls as independent network runs with separately allocated listener/client/server resources.
+- [ ] Compare the two runs' `AuthoritativeFrames` without asserting an expected sequence length or literal Tick already owned by Test 4. First require the two actual lengths to equal each other, then compare every Frame field: Frame Tick, roster Count, every Slot's PlayerId, InputCount, and every Slot's Input Tick, PlayerSlot, MoveX, MoveZ, and Aim.
+- [ ] Do not compare `ListenerPort` or any endpoint field between runs. Operating-system ephemeral-port reuse is legal.
+- [ ] Test 8 must assert these exact consumer-owned Client state/Digest literals for each independent run; none may appear in `LoopbackTcpGoldenVector.cs`:
+
+```text
+After authoritative Tick100 / Client State Tick101
+Slot0 = X -200, Z 0,    Aim 10100
+Slot1 = X 200,  Z 0,    Aim 20100
+Slot2 = X 0,    Z -200, Aim 30100
+Slot3 = X 0,    Z 200,  Aim 40100
+Digest = 0xD95809E1EB5CDDAA
+
+After authoritative Tick101 / Client State Tick102
+Slot0 = X -200, Z 100,  Aim 10101
+Slot1 = X 200,  Z -100, Aim 20101
+Slot2 = X 100,  Z -200, Aim 30101
+Slot3 = X -100, Z 200,  Aim 40101
+Digest = 0xA96B83267DD72A7D
+
+After authoritative Tick102 / Client State Tick103
+Slot0 = X -300, Z 100,  Aim 10102
+Slot1 = X 300,  Z -100, Aim 20102
+Slot2 = X 100,  Z -300, Aim 30102
+Slot3 = X -100, Z 300,  Aim 40102
+Digest = 0x386C4BB11A7EB7E0
+```
+
+- [ ] Test 8 independently asserts each run's final Server/Client full-state equality, structural roster equality, `NextPublishTick == 103`, and final Server/Client Digest `0x386C4BB11A7EB7E0`. These remain Test 8 responsibilities and do not add assertions to Tests 1-5.
 
 ### GREEN, audit, and commit
 
@@ -273,11 +314,33 @@ ServerReadZeroBeforeTwelvePayloadsThrowsEndOfStreamException
 ClientReadZeroBeforeThreePayloadsThrowsEndOfStreamException
 ```
 
-- [ ] Make the tests call absent private helpers `RunServerEofFixture` and `RunClientEofFixture`. Build and require compilation failure only because those private helpers are absent. Do not accept a networking or assertion failure as this RED.
+- [ ] Create a `List<byte[]>` in each test and make the tests call these absent exact private helpers:
+
+```csharp
+private static void RunServerEofFixture(List<byte[]> recoveredPayloads);
+private static void RunClientEofFixture(List<byte[]> recoveredPayloads);
+```
+
+Build and require compilation failure only because those private helpers are absent. Do not accept a networking or assertion failure as this RED.
 
 ### Minimal implementation
 
-- [ ] Implement both helpers as private members of `LoopbackTcpEndToEndTests.cs`; do not change the Golden API.
+- [ ] Implement both exact signatures as private static members of `LoopbackTcpEndToEndTests.cs`; use `System.Collections.Generic.List<byte[]>` and do not change the Golden API, add another helper/result type, or create a fifth source file.
+- [ ] Each public EOF test creates its own empty list, calls its helper through `TestAssert.Throws<EndOfStreamException>`, and then independently asserts the recovered count:
+
+```csharp
+var serverRecoveredPayloads = new List<byte[]>();
+TestAssert.Throws<EndOfStreamException>(
+    () => RunServerEofFixture(serverRecoveredPayloads));
+TestAssert.Equal(11, serverRecoveredPayloads.Count);
+
+var clientRecoveredPayloads = new List<byte[]>();
+TestAssert.Throws<EndOfStreamException>(
+    () => RunClientEofFixture(clientRecoveredPayloads));
+TestAssert.Equal(2, clientRecoveredPayloads.Count);
+```
+
+The helpers append each completed payload before the subsequent zero-byte Read raises `EndOfStreamException`; the exception assertion and recovered-count assertion remain separate.
 - [ ] Server EOF fixture:
 
 ```text
