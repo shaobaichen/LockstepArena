@@ -696,3 +696,122 @@ Exact Base: d5be3b8c3efe03c6b4a014f2b8b7bf972e5a0af7
 The Planning commit contains only this architecture document and the approved implementation plan. It contains no package, Runtime source, tests, `.gitignore`, lockfile, manifest, Unity asset, or other implementation change.
 
 After Planning is pushed, Gate 7 stops until independent Planning PASS. After eventual implementation and final evidence, Gate 7 stops again before any TCP work.
+
+## 19. Implementation Evidence
+
+Gate 7 was implemented from the approved Planning HEAD
+`a7a644515b697bf1cde217172832a60d7647aeb4` on branch
+`codex/gate7-stream-framing`, with frozen comparison base
+`d5be3b8c3efe03c6b4a014f2b8b7bf972e5a0af7`.
+
+Implementation commits before this evidence update are:
+
+```text
+54d2ed640139eb7497a8b4438475a3b88edfc8d2 feat: encode length-prefixed payload frames
+47784515ca5d29cadaab6cf6cfe00448fa5c857f feat: decode incremental stream segments
+08d5d536a048d2f908c4f2b79cc72635f78f8c96 feat: reject oversize stream frames
+bf7f34ebd30c3c4ab651f39d92cc2d938852fe21 test: prove framed protocol authority composition
+46bd1fd607c98e6688cd79c6e685b7489b107722 test: prove Unity stream framing execution
+```
+
+The implementation followed the approved RED/GREEN slices. The Encoder tests
+first failed because the Encoder type did not exist. Decoder contract tests
+first failed because the Decoder type did not exist. Oversize/fault tests then
+reported `24/28`, with exactly the four sticky-fault behaviors failing. The
+Gate 6 composition slice first failed because its actual vector did not exist.
+Finally, both .NET and Unity failed compilation because the single shared
+`Gate7FramingGoldenVector.cs` did not yet exist. Each slice passed after its
+minimal implementation was added; no temporary compatibility API remains.
+
+Fresh final verification was run on 2026-09-03. Each of the 12 projects listed
+in Section 16 was built independently with:
+
+```powershell
+dotnet build <project> -c Release --no-restore --nologo
+```
+
+The pinned CodeGen project's missing local `project.assets.json` was restored
+with its existing project contract before restarting the complete build matrix.
+The restarted matrix completed as:
+
+```text
+BUILD_MATRIX=12/12 zero warnings zero errors
+```
+
+Fresh dependency-free .NET executions used
+`dotnet run --project <project> -c Release --no-build` and produced:
+
+```text
+Gate 3 Simulation:         RESULT 38/38 passed
+Gate 4 FrameSync:          RESULT 32/32 passed
+Gate 5 Protocol:           RESULT 35/35 passed
+Gate 6 ProtocolAuthority:  RESULT 24/24 passed
+Gate 7 StreamFraming:      RESULT 32/32 passed
+Gate 3 Server Golden:      Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+```
+
+The Gate 7 suite passed
+`FramedSubmissionsDriveGapFillPublicationOfTicks100Through102`,
+`FramedAuthoritativePayloadsMatchApprovedPerTickClientDigests`,
+`FramedServerAndClientReachApprovedFinalStateAndDigest`, and
+`DifferentBidirectionalSegmentationsProduceSameAuthoritativeDomainSequence`.
+Those tests independently assert State Tick 103, the frozen intermediate
+Digests, and final Digest `386C4BB11A7EB7E0`.
+
+Unity 6000.3.10f1 ran three separate assembly-filtered EditMode jobs. Each job
+created a fresh NUnit XML result under ignored `.artifacts/gate7-final-unity/`.
+The XML, rather than process launch alone, proved:
+
+```text
+LockstepArena.StreamFraming.Editor.Tests
+  total=1 passed=1 failed=0
+  UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden = Passed
+
+LockstepArena.Protocol.Editor.Tests
+  total=2 passed=2 failed=0
+  GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads = Passed
+  UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector = Passed
+
+LockstepArena.Simulation.Editor.Tests
+  total=1 passed=1 failed=0
+  UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector = Passed
+```
+
+After every Unity job, the generated worktree-local serialization diff was
+inspected. Only the confirmed Unity rewrite of
+`Assets/Settings/Mobile_RPAsset.asset` was restored by exact path during the
+final runs. No broad reset or clean was used, and the ordinary checkout was
+not used for Unity verification.
+
+Final audits established:
+
+- existing Simulation, Protocol, Server FrameSync, and Server
+  ProtocolAuthority production paths have zero committed diff from the frozen
+  Gate 6 base;
+- `Assets/`, `ProjectSettings/`, and `Packages/manifest.json` have zero
+  committed diff;
+- existing lockfile entries are structurally unchanged and the only new entry
+  is the exact dependency-free embedded StreamFraming package entry;
+- `.gitignore` adds exactly the two approved authored-csproj exceptions;
+- the embedded package contains exactly one Encoder source and one Decoder
+  source, with no duplicate, generated, copied, or synchronized production
+  implementation;
+- the package has no symlink, junction, cleanup/copy/sync script, `bin`, `obj`,
+  DLL, or unexpected managed artifact;
+- the runtime asmdef and csproj remain dependency-free and route .NET outputs
+  to repository `.artifacts/`;
+- the Gate 7 test project has exactly the four approved direct
+  ProjectReferences, no direct FrameSync reference, and one linked Compile
+  Include for the single physical pure-C# Golden vector;
+- production contains none of the excluded network, transport, routing,
+  timing, prediction, rollback, replay, room, view, combat, pooling, ring
+  buffer, middleware, or framework scope;
+- the Gate 7 worktree was clean before this evidence-only edit, and the
+  ordinary checkout still contained exactly the two user-owned modifications:
+  `Assets/Settings/Mobile_RPAsset.asset` and
+  `ProjectSettings/ShaderGraphSettings.asset`.
+
+The previously transient Unity Package Manager network failure did not require
+or produce any manifest, lockfile dependency-version, Unity MCP, or dependency
+configuration change. Gate 7 remains an offline framing Gate and stops before
+Gate 8 or TCP work.
