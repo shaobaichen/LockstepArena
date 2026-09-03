@@ -15,4 +15,9 @@
     <ProjectReference Include="..\..\Packages\com.locksteparena.protocol\Runtime\LockstepArena.Protocol.csproj" />
     <ProjectReference Include="..\..\Packages\com.locksteparena.simulation\Runtime\LockstepArena.Simulation.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Packages\com.locksteparena.stream-framing\Tests\Editor\Gate7FramingGoldenVector.cs"
+             Link="Gate7FramingGoldenVector.cs" />
+  </ItemGroup>
 </Project>

@@ -31,6 +31,12 @@
         "com.locksteparena.simulation": "0.1.0"
       }
     },
+    "com.locksteparena.stream-framing": {
+      "version": "file:com.locksteparena.stream-framing",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,

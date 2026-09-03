@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LockstepArena.StreamFraming.Verification;
 
 namespace LockstepArena.StreamFraming.Tests
 {
@@ -78,11 +79,25 @@ namespace LockstepArena.StreamFraming.Tests
 
         private static void ArbitrarySegmentsRecoverApprovedAbcSequence()
         {
-            byte[] stream = CreateAbcStream();
+            Gate7FramingGoldenResult golden = Gate7FramingGoldenVector.Run();
 
-            byte[][] actual = DecodeSegments(stream, new int[] { 1, 2, 2, 13, 4, 6 });
-
-            AssertAbc(actual);
+            TestAssert.SequenceEqual(
+                new byte[]
+                {
+                    0x00, 0x00, 0x00, 0x03, 0xDE, 0xAD, 0xBE,
+                    0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x02, 0x03, 0x04,
+                    0x00, 0x00, 0x00, 0x08, 0xFF, 0x00, 0x7F, 0x80,
+                    0x10, 0x20, 0x30, 0x40,
+                },
+                golden.FramedStream);
+            TestAssert.Equal(6, golden.FeedBatchSizes.Length);
+            TestAssert.Equal(0, golden.FeedBatchSizes[0]);
+            TestAssert.Equal(0, golden.FeedBatchSizes[1]);
+            TestAssert.Equal(0, golden.FeedBatchSizes[2]);
+            TestAssert.Equal(2, golden.FeedBatchSizes[3]);
+            TestAssert.Equal(0, golden.FeedBatchSizes[4]);
+            TestAssert.Equal(1, golden.FeedBatchSizes[5]);
+            AssertAbc(golden.RecoveredPayloads);
         }
 
         private static void DifferentSegmentationsRecoverIdenticalPayloadSequence()
