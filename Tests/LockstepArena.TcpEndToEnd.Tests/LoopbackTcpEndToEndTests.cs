@@ -1,5 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using LockstepArena.Simulation;
+using LockstepArena.StreamFraming;
 
 namespace LockstepArena.TcpEndToEnd.Tests
 {
@@ -12,6 +17,8 @@ namespace LockstepArena.TcpEndToEnd.Tests
             new TestCase(nameof(ContinuousClientStreamRecoversTwelveSubmissionPayloadsInOrder), ContinuousClientStreamRecoversTwelveSubmissionPayloadsInOrder),
             new TestCase(nameof(GapFillPublishesTicks100Through102AsIndependentPayloads), GapFillPublishesTicks100Through102AsIndependentPayloads),
             new TestCase(nameof(ContinuousServerStreamRecoversThreeAuthoritativePayloadsInOrder), ContinuousServerStreamRecoversThreeAuthoritativePayloadsInOrder),
+            new TestCase(nameof(ServerReadZeroBeforeTwelvePayloadsThrowsEndOfStreamException), ServerReadZeroBeforeTwelvePayloadsThrowsEndOfStreamException),
+            new TestCase(nameof(ClientReadZeroBeforeThreePayloadsThrowsEndOfStreamException), ClientReadZeroBeforeThreePayloadsThrowsEndOfStreamException),
             new TestCase(nameof(RealTcpRoundTripMatchesApprovedAuthoritySequenceStatesAndDigests), RealTcpRoundTripMatchesApprovedAuthoritySequenceStatesAndDigests),
         };
 
@@ -70,6 +77,121 @@ namespace LockstepArena.TcpEndToEnd.Tests
             TestAssert.Equal(3, actual.AuthoritativePayloads.Length);
             TestAssert.Equal(3, actual.RecoveredAuthoritativePayloads.Length);
             AssertPayloadSequenceEqual(actual.AuthoritativePayloads, actual.RecoveredAuthoritativePayloads);
+        }
+
+        private static void ServerReadZeroBeforeTwelvePayloadsThrowsEndOfStreamException()
+        {
+            var recoveredPayloads = new List<byte[]>();
+            TestAssert.Throws<EndOfStreamException>(
+                () => RunServerEofFixture(recoveredPayloads));
+            TestAssert.Equal(11, recoveredPayloads.Count);
+        }
+
+        private static void ClientReadZeroBeforeThreePayloadsThrowsEndOfStreamException()
+        {
+            var recoveredPayloads = new List<byte[]>();
+            TestAssert.Throws<EndOfStreamException>(
+                () => RunClientEofFixture(recoveredPayloads));
+            TestAssert.Equal(2, recoveredPayloads.Count);
+        }
+
+        private static void RunServerEofFixture(List<byte[]> recoveredPayloads)
+        {
+            LoopbackTcpGoldenResult actual = LoopbackTcpGoldenVector.Run();
+            byte[] framedStream = FramePayloads(actual.SubmissionPayloads, 11);
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start(1);
+            try
+            {
+                var endpoint = (IPEndPoint)listener.LocalEndpoint;
+                using var client = new TcpClient(AddressFamily.InterNetwork);
+                client.Connect(IPAddress.Loopback, endpoint.Port);
+                using TcpClient acceptedClient = listener.AcceptTcpClient();
+                using NetworkStream clientStream = client.GetStream();
+                using NetworkStream serverStream = acceptedClient.GetStream();
+
+                clientStream.Write(framedStream, 0, framedStream.Length);
+                client.Client.Shutdown(SocketShutdown.Send);
+
+                var decoder = new LengthPrefixedFrameDecoder(4096);
+                var receiveBuffer = new byte[16];
+                while (recoveredPayloads.Count < 12)
+                {
+                    int bytesRead = serverStream.Read(receiveBuffer, 3, 3);
+                    if (bytesRead == 0)
+                    {
+                        throw new EndOfStreamException(
+                            "TCP stream ended before twelve submissions were recovered.");
+                    }
+
+                    recoveredPayloads.AddRange(decoder.Feed(receiveBuffer, 3, bytesRead));
+                    Array.Fill(receiveBuffer, (byte)0xA5);
+                }
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        private static void RunClientEofFixture(List<byte[]> recoveredPayloads)
+        {
+            LoopbackTcpGoldenResult actual = LoopbackTcpGoldenVector.Run();
+            byte[] framedStream = FramePayloads(actual.AuthoritativePayloads, 2);
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start(1);
+            try
+            {
+                var endpoint = (IPEndPoint)listener.LocalEndpoint;
+                using var client = new TcpClient(AddressFamily.InterNetwork);
+                client.Connect(IPAddress.Loopback, endpoint.Port);
+                using TcpClient acceptedClient = listener.AcceptTcpClient();
+                using NetworkStream clientStream = client.GetStream();
+                using NetworkStream serverStream = acceptedClient.GetStream();
+
+                serverStream.Write(framedStream, 0, framedStream.Length);
+                acceptedClient.Client.Shutdown(SocketShutdown.Send);
+
+                var decoder = new LengthPrefixedFrameDecoder(4096);
+                var receiveBuffer = new byte[16];
+                while (recoveredPayloads.Count < 3)
+                {
+                    int bytesRead = clientStream.Read(receiveBuffer, 5, 5);
+                    if (bytesRead == 0)
+                    {
+                        throw new EndOfStreamException(
+                            "TCP stream ended before three authoritative payloads were recovered.");
+                    }
+
+                    recoveredPayloads.AddRange(decoder.Feed(receiveBuffer, 5, bytesRead));
+                    Array.Fill(receiveBuffer, (byte)0xA5);
+                }
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        private static byte[] FramePayloads(byte[][] payloads, int count)
+        {
+            var frames = new byte[count][];
+            int streamLength = 0;
+            for (int index = 0; index < count; index++)
+            {
+                frames[index] = LengthPrefixedFrameEncoder.Encode(payloads[index], 4096);
+                streamLength = checked(streamLength + frames[index].Length);
+            }
+
+            var stream = new byte[streamLength];
+            int streamOffset = 0;
+            for (int index = 0; index < frames.Length; index++)
+            {
+                Array.Copy(frames[index], 0, stream, streamOffset, frames[index].Length);
+                streamOffset += frames[index].Length;
+            }
+
+            return stream;
         }
 
         private static void RealTcpRoundTripMatchesApprovedAuthoritySequenceStatesAndDigests()

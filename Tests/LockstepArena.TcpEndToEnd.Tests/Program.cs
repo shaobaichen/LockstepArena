@@ -50,6 +50,28 @@ namespace LockstepArena.TcpEndToEnd.Tests
                 Equal(expected[index], actual[index]);
             }
         }
+
+        public static void Throws<TException>(Action body)
+            where TException : Exception
+        {
+            try
+            {
+                body();
+            }
+            catch (TException)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    $"Expected {typeof(TException).Name} but found {exception.GetType().Name}.",
+                    exception);
+            }
+
+            throw new InvalidOperationException(
+                $"Expected {typeof(TException).Name} but no exception was thrown.");
+        }
     }
 
     internal static class Program
