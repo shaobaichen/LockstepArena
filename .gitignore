@@ -72,6 +72,7 @@ ExportedObj/
 !Tests/LockstepArena.Server.ProtocolAuthority.Tests/LockstepArena.Server.ProtocolAuthority.Tests.csproj
 !Packages/com.locksteparena.stream-framing/Runtime/LockstepArena.StreamFraming.csproj
 !Tests/LockstepArena.StreamFraming.Tests/LockstepArena.StreamFraming.Tests.csproj
+!Tests/LockstepArena.TcpEndToEnd.Tests/LockstepArena.TcpEndToEnd.Tests.csproj
 [Bb]in/
 [Oo]bj/
 /.artifacts/
