@@ -520,3 +520,125 @@ Gate 8 does not add:
 - TLS, compression, encryption, pooling, generic transport abstraction, middleware, event bus, DI, or framework expansion.
 
 Gate 8 ends after proving the frozen finite scenario over real loopback TCP and submitting its Final Implementation Handoff. It does not begin Gate 9 or any production TCP work.
+
+## 19. Implementation Evidence
+
+### 19.1 Commit and scope identity
+
+- Frozen Gate 7 comparison base: `0a73d924944a192c16c12260447c63272b727899`.
+- Final approved Gate 8 Planning HEAD: `58f3c1678c3efa2506c9489842716a200d5b5698`.
+- Successful-path implementation: `f7ebdcc` (`test: prove real TCP authority round trip`).
+- Deterministic EOF implementation and evidence-commit parent: `ed1b5deb9e094cce40b6856a4b688f3274de9d01` (`test: prove deterministic TCP end-of-stream failures`).
+- The implementation adds only the four-file `Tests/LockstepArena.TcpEndToEnd.Tests/` project and the single approved `.gitignore` exception. It adds no production assembly or Unity TCP code.
+
+### 19.2 Restore and Release builds
+
+The final restore-assets preflight resolved the effective `ProjectAssetsFile` for all 13 frozen projects. Missing assets were restored only through each existing project contract, so `restoreOccurred=True`; restore produced no repository diff and the complete build matrix restarted at build 1.
+
+All 13 independent Release `--no-restore` builds completed with `0 warnings / 0 errors`:
+
+```text
+1.  LockstepArena.Simulation
+2.  LockstepArena.Server.FrameSync
+3.  LockstepArena.Server.Verification
+4.  LockstepArena.Simulation.Tests
+5.  LockstepArena.Server.FrameSync.Tests
+6.  LockstepArena.Protocol.CodeGen
+7.  LockstepArena.Protocol
+8.  LockstepArena.Server.Protocol.Tests
+9.  LockstepArena.Server.ProtocolAuthority
+10. LockstepArena.Server.ProtocolAuthority.Tests
+11. LockstepArena.StreamFraming
+12. LockstepArena.StreamFraming.Tests
+13. LockstepArena.TcpEndToEnd.Tests
+```
+
+### 19.3 Fresh .NET execution
+
+```text
+Gate 3 Simulation:         RESULT 38/38 passed
+Gate 4 FrameSync:          RESULT 32/32 passed
+Gate 5 Protocol:           RESULT 35/35 passed
+Gate 6 ProtocolAuthority:  RESULT 24/24 passed
+Gate 7 StreamFraming:      RESULT 32/32 passed
+Gate 8 TCP End-to-End:     RESULT 8/8 passed
+Gate 3 Server Golden:      Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+```
+
+The Gate 8 executable ran under the external 30-second process watchdog and completed in `0.426` seconds. The watchdog did not fire, and neither production nor tests set a socket or gameplay timeout.
+
+The passing Gate 8 assertions prove:
+
+- the listener bound IPv4 `IPAddress.Loopback` to an OS-assigned port greater than zero and the explicit IPv4 client connected to that exact port;
+- the Server and Client each performed more than one real `NetworkStream.Read`, without asserting any individual Read size;
+- one continuous Client-to-Server stream recovered all 12 submission payloads byte-for-byte and in order;
+- processor calls 1 through 11 published zero payloads and call 12 published three independent authoritative payloads for Ticks 100, 101, and 102;
+- one continuous Server-to-Client stream recovered those three payloads byte-for-byte and in order;
+- both EOF fixtures recovered exactly 11 submissions or two authoritative payloads before the next zero-byte Read raised `EndOfStreamException`;
+- two independent real-TCP Golden executions produced field-for-field equal authoritative Domain Frame sequences.
+
+The Client state oracle passed at every authoritative Tick:
+
+```text
+State Tick 101
+Slot0 X=-200 Z=0    Aim=10100
+Slot1 X=200  Z=0    Aim=20100
+Slot2 X=0    Z=-200 Aim=30100
+Slot3 X=0    Z=200  Aim=40100
+Digest D95809E1EB5CDDAA
+
+State Tick 102
+Slot0 X=-200 Z=100  Aim=10101
+Slot1 X=200  Z=-100 Aim=20101
+Slot2 X=100  Z=-200 Aim=30101
+Slot3 X=-100 Z=200  Aim=40101
+Digest A96B83267DD72A7D
+
+State Tick 103
+Slot0 X=-300 Z=100  Aim=10102
+Slot1 X=300  Z=-100 Aim=20102
+Slot2 X=100  Z=-300 Aim=30102
+Slot3 X=-100 Z=300  Aim=40102
+Digest 386C4BB11A7EB7E0
+```
+
+Final Server and Client rosters and full states were equal, both simulations were at Tick 103 with Digest `386C4BB11A7EB7E0`, and `NextPublishTick` was 103.
+
+### 19.4 Fresh Unity 6000.3.10f1 execution
+
+The approved Planning command contained `-quit`. On Unity 6000.3.10f1 it exited after initial batch import before Test Runner execution. No NUnit XML was generated. An independent execution amendment approved removing only `-quit`. Final Unity regressions used the same frozen project path, platform, assembly filters, Gate 3 test filter, result paths, and expectations with hidden `Start-Process -Wait`. The failed `-quit` run is not treated as test evidence.
+
+Each amended run created and then passed strict parsing of a fresh NUnit XML file:
+
+```text
+Gate 7 XML: .artifacts/gate8-unity-amended/gate7/results.xml
+Fresh UTC:  2026-09-04T06:26:49.5952429Z
+total=1 passed=1 failed=0
+UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden = Passed
+
+Gate 5 XML: .artifacts/gate8-unity-amended/gate5/results.xml
+Fresh UTC:  2026-09-04T06:29:20.5714526Z
+total=2 passed=2 failed=0
+GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads = Passed
+UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector = Passed
+
+Gate 3 XML: .artifacts/gate8-unity-amended/gate3/results.xml
+Fresh UTC:  2026-09-04T06:30:37.7424502Z
+total=1 passed=1 failed=0
+UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector = Passed
+```
+
+The Unity process exit codes were zero but were not used as the PASS criterion. Each PASS came from its fresh XML totals and unique named `test-case`. After every successful Unity run, the exact worktree status and Assets/ProjectSettings diff were inspected; no serialization change remained and no restore was required. The ordinary checkout was never used for Unity verification.
+
+### 19.5 Final audits
+
+- Simulation, Protocol, StreamFraming, FrameSync, ProtocolAuthority, Assets, ProjectSettings, manifest, packages-lock, and every pre-existing test have zero frozen-base committed and working-tree diff.
+- `.gitignore` has exactly one added line and no deletion: `!Tests/LockstepArena.TcpEndToEnd.Tests/LockstepArena.TcpEndToEnd.Tests.csproj`.
+- The Gate 8 project has exactly four tracked authored files and exactly the four approved direct ProjectReferences. It has no direct FrameSync reference, PackageReference, external Compile Include, or test framework dependency.
+- All 27 TCP source-symbol matches are below `Tests/LockstepArena.TcpEndToEnd.Tests/`; production has no TCP, Socket, NetworkStream, async/thread, timeout, UDP, or KCP addition.
+- `SocketShutdown.Send` occurs exactly twice, only in the two private deterministic EOF fixtures. No socket timeout property is set.
+- Every successful Read feeds the same reusable receive buffer, offset, and returned `bytesRead` directly into the decoder. No exact-sized intermediary receive array is created.
+- No copied or linked Gate 6/Gate 7 helper, external Golden, symlink/junction, copy/sync/cleanup script, package `bin/obj`, package LockstepArena DLL, or tracked build artifact exists.
+- The Gate 8 worktree was clean before this evidence-only edit. The ordinary checkout still contains exactly the two untouched user-owned modifications to `Assets/Settings/Mobile_RPAsset.asset` and `ProjectSettings/ShaderGraphSettings.asset`.
+
+Gate 8 stops after this evidence and Final Implementation Handoff. It does not begin Gate 9, production TCP, KCP, TickClock, or InputDelay.
