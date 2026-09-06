@@ -616,3 +616,133 @@ Gate 9 ends after:
 - the implementation evidence is committed and the remote Gate 9 branch matches local HEAD.
 
 Gate 9 then stops. It does not begin a real clock driver, production TCP, KCP, weak-network behavior, or any next Gate.
+
+## 19. Implementation Evidence
+
+Frozen comparison base:
+
+```text
+a91641f5a6a973833c62b13e950a234fbef9552b
+```
+
+Approved Planning HEAD and implementation commits:
+
+```text
+75a1340a5c7677a5754be23591708063a7206f93  docs: plan Gate 9 tick-driven authority
+f657328c729914e44d5677c08ec349ae804fbda1  feat: gate authoritative frames by logical time
+2481bf121985280722bbc6f43b8eaa4988d68a64  feat: preserve delayed authority tick limits
+38de260ea19e676fd3a2e17602945f065290cda3  test: prove fixed-delay authority determinism
+```
+
+The evidence commit's parent is `38de260ea19e676fd3a2e17602945f065290cda3`.
+
+### 19.1 Restore and Release builds
+
+The restore-assets preflight resolved all 14 effective `ProjectAssetsFile` paths. Ten missing or stale project assets were restored using only their existing frozen project contracts. A transient NuGet vulnerability-index failure left an error-bearing CodeGen asset; after the same endpoint returned HTTP 200, the pinned CodeGen project was restored without dependency, source, version, generated-source, or project-XML changes.
+
+The complete 14-project Release matrix was then restarted from build 1. Every build completed with:
+
+```text
+0 warnings
+0 errors
+```
+
+### 19.2 Fresh .NET execution
+
+```text
+Gate 3 Simulation:         RESULT 38/38 passed
+Gate 4 FrameSync:          RESULT 32/32 passed
+Gate 5 Protocol:           RESULT 35/35 passed
+Gate 6 ProtocolAuthority:  RESULT 24/24 passed
+Gate 7 StreamFraming:      RESULT 32/32 passed
+Gate 8 TCP watchdog:       RESULT 8/8 passed
+Gate 9 TickAuthority:      RESULT 27/27 passed
+Gate 3 Server Golden:      Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+```
+
+The Gate 8 synchronous TCP suite completed inside the approved external 30-second process watchdog. The watchdog added no socket, gameplay timeout, or retry behavior.
+
+### 19.3 Gate 9 deterministic results
+
+Two-player warm-up:
+
+```text
+publication: [10]
+final Tick:  11
+Slot0: X=100  Z=0 Aim=101
+Slot1: X=-100 Z=0 Aim=201
+Digest: AE353BEBCCF29139
+```
+
+Three-player late completion:
+
+```text
+publication: [20]
+final Tick:  21
+Slot0: X=100  Z=0   Aim=1001
+Slot1: X=0    Z=100 Aim=2001
+Slot2: X=-100 Z=0   Aim=3001
+Digest: 38CCC825F57B7655
+```
+
+Both independent four-player arrival orders produced:
+
+```text
+publication batches: [100,101], [102], [103]
+flattened frames:     100,101,102,103
+retained history:     101,102,103
+CollectionTick:       105
+EligibilityCeiling:   103
+NextPublishTick:      104
+
+State Tick101 Digest: D95809E1EB5CDDAA
+State Tick102 Digest: A96B83267DD72A7D
+State Tick103 Digest: 386C4BB11A7EB7E0
+State Tick104 Digest: 9F41F69F63A24BCB
+```
+
+The final Tick104 state was:
+
+```text
+Slot0: X=-300 Z=0    Aim=10103
+Slot1: X=300  Z=0    Aim=20103
+Slot2: X=0    Z=-300 Aim=30103
+Slot3: X=0    Z=300  Aim=40103
+```
+
+The two runs matched field-for-field for batch boundaries, roster, authoritative Frame data, every per-Frame Simulation state, and every Digest.
+
+### 19.4 Unity 6000.3.10f1 regressions
+
+Each regression ran separately from the Gate 9 worktree and produced fresh NUnit XML:
+
+```text
+.artifacts/gate9-unity/gate7-results.xml
+total=1 passed=1 failed=0
+UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden = Passed
+
+.artifacts/gate9-unity/gate5-results.xml
+total=2 passed=2 failed=0
+GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads = Passed
+UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector = Passed
+
+.artifacts/gate9-unity/gate3-results.xml
+total=1 passed=1 failed=0
+UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector = Passed
+```
+
+After every Unity run, exact `Assets` / `ProjectSettings` diffs were inspected. Only confirmed Unity-generated serialization changes were restored by exact path inside the Gate 9 worktree.
+
+### 19.5 Boundary and artifact audits
+
+- Gate 4's public Coordinator API remained unchanged and its full 32-test behavior passed after the refactor.
+- `Collect` preserved the approved validation order, including transactional candidate submission before pending-dictionary insertion.
+- `PublishThrough` retained local planning, copied pending/history containers, and final field replacement; a ceiling below `NextPublishTick` is empty and state-preserving.
+- `TickDrivenFramePublisher` contains only scalar scheduling state plus one Coordinator and owns no pending collection, history, Simulation, Protocol, transport, clock, task, thread, or recovery mechanism.
+- Shared Simulation, Protocol, StreamFraming, ProtocolAuthority, Gate 8 TCP, pre-existing tests, Unity Assets/ProjectSettings, manifest, and packages-lock had zero committed diff from the frozen base.
+- The FrameSync production diff contained exactly `AuthoritativeFrameCoordinator.cs` and `TickDrivenFramePublisher.cs`.
+- `.gitignore` added exactly the approved TickAuthority test-project exception.
+- The Gate 9 test project contained exactly four tracked files and two direct ProjectReferences.
+- All six expected Gate 9 Digest literals existed only in the consumer test source, never in production or the actual-only Golden vector.
+- No symlink/junction, copy/sync/cleanup script, new package, generated Gate 9 source, tracked `bin`/`obj`, or tracked/package-local LockstepArena build DLL was introduced.
+- The ordinary checkout remained untouched with only its two pre-existing user-owned modifications.
