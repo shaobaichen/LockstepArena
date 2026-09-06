@@ -36,6 +36,12 @@ namespace LockstepArena.Server.FrameSync
 
         public FrameData[] Submit(PlayerId submittedPlayerId, InputFrame input)
         {
+            Collect(submittedPlayerId, input);
+            return PublishThrough(uint.MaxValue - 1U);
+        }
+
+        internal void Collect(PlayerId submittedPlayerId, InputFrame input)
+        {
             if (input.Tick == uint.MaxValue)
             {
                 throw new ArgumentOutOfRangeException(
@@ -74,10 +80,18 @@ namespace LockstepArena.Server.FrameSync
             {
                 collector.Submit(submittedPlayerId, input);
             }
+        }
+
+        internal FrameData[] PublishThrough(uint inclusiveEligibilityCeiling)
+        {
+            if (inclusiveEligibilityCeiling < NextPublishTick)
+            {
+                return Array.Empty<FrameData>();
+            }
 
             List<FrameData> frames = new List<FrameData>();
             ulong scanTick = NextPublishTick;
-            while (scanTick < uint.MaxValue)
+            while (scanTick <= inclusiveEligibilityCeiling && scanTick < uint.MaxValue)
             {
                 uint tick = (uint)scanTick;
                 if (!_pendingByTick.TryGetValue(tick, out StrictFrameCollector? pending) ||
@@ -87,13 +101,9 @@ namespace LockstepArena.Server.FrameSync
                 }
 
                 frames.Add(pending.GetCompletedFrame());
-                if (tick == uint.MaxValue - 1U)
-                {
-                    scanTick = uint.MaxValue;
-                    break;
-                }
-
-                scanTick++;
+                scanTick = tick == uint.MaxValue - 1U
+                    ? uint.MaxValue
+                    : scanTick + 1UL;
             }
 
             if (frames.Count == 0)
