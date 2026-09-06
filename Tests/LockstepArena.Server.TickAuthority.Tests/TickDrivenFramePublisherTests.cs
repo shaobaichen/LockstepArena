@@ -28,6 +28,10 @@ namespace LockstepArena.Server.TickAuthority.Tests
             new TestCase("AuthoritativeHistoryCapacityRemainsBounded", AuthoritativeHistoryCapacityRemainsBounded),
             new TestCase("RejectedSubmitPreservesScheduleAndExistingPendingInputs", RejectedSubmitPreservesScheduleAndExistingPendingInputs),
             new TestCase("PublicationBatchContainerIsIndependentFromHistorySnapshot", PublicationBatchContainerIsIndependentFromHistorySnapshot),
+            new TestCase("FinalConsumableTickBecomesEligibleWithoutWrap", FinalConsumableTickBecomesEligibleWithoutWrap),
+            new TestCase("EligibilityCeilingSaturatesAtFinalConsumableTick", EligibilityCeilingSaturatesAtFinalConsumableTick),
+            new TestCase("AdvanceAfterEligibilitySaturationThrowsWithoutMutation", AdvanceAfterEligibilitySaturationThrowsWithoutMutation),
+            new TestCase("UintMaxInputIsRejectedWithoutScheduleMutation", UintMaxInputIsRejectedWithoutScheduleMutation),
         };
 
         private static void ConstructorRejectsNullRoster()
@@ -273,6 +277,80 @@ namespace LockstepArena.Server.TickAuthority.Tests
             FrameData[] history = publisher.GetAuthoritativeHistorySnapshot();
             TestAssert.Same(publishedFrame, history[0]);
             TestAssert.Equal(100U, history[0].Tick);
+        }
+
+        private static void FinalConsumableTickBecomesEligibleWithoutWrap()
+        {
+            uint finalTick = uint.MaxValue - 1U;
+            ActiveRoster roster = CreateRoster(2);
+            TestAssert.Throws<ArgumentOutOfRangeException>(
+                () => CreatePublisher(roster, uint.MaxValue, 1U, 0U, 2));
+            TickDrivenFramePublisher publisher = CreatePublisher(roster, finalTick, 2U, 0U, 2);
+            CompleteTick(publisher, roster, finalTick);
+
+            AssertEmpty(publisher.AdvanceOneTick());
+            AssertTicks(new[] { finalTick }, publisher.AdvanceOneTick());
+            TestAssert.Equal((ulong)uint.MaxValue + 1UL, publisher.CollectionTick);
+            TestAssert.Equal<uint?>(finalTick, publisher.EligibilityCeiling);
+            TestAssert.Equal(uint.MaxValue, publisher.NextPublishTick);
+        }
+
+        private static void EligibilityCeilingSaturatesAtFinalConsumableTick()
+        {
+            uint initialTick = uint.MaxValue - 2U;
+            TickDrivenFramePublisher publisher = CreatePublisher(CreateRoster(2), initialTick, 1U, 1U, 2);
+
+            AssertEmpty(publisher.AdvanceOneTick());
+            TestAssert.Equal<uint?>(initialTick, publisher.EligibilityCeiling);
+            AssertEmpty(publisher.AdvanceOneTick());
+            TestAssert.Equal<uint?>(uint.MaxValue - 1U, publisher.EligibilityCeiling);
+            TestAssert.Equal((ulong)uint.MaxValue, publisher.CollectionTick);
+        }
+
+        private static void AdvanceAfterEligibilitySaturationThrowsWithoutMutation()
+        {
+            uint firstTick = uint.MaxValue - 2U;
+            uint finalTick = uint.MaxValue - 1U;
+            ActiveRoster roster = CreateRoster(2);
+            TickDrivenFramePublisher publisher = CreatePublisher(roster, firstTick, 1U, 1U, 2);
+            Submit(publisher, roster, firstTick, 0);
+            Submit(publisher, roster, finalTick, 0);
+            publisher.AdvanceOneTick();
+            publisher.AdvanceOneTick();
+            ulong collectionBefore = publisher.CollectionTick;
+            uint? ceilingBefore = publisher.EligibilityCeiling;
+            uint nextBefore = publisher.NextPublishTick;
+            FrameData[] historyBefore = publisher.GetAuthoritativeHistorySnapshot();
+
+            TestAssert.Throws<InvalidOperationException>(() => publisher.AdvanceOneTick());
+            TestAssert.Equal(collectionBefore, publisher.CollectionTick);
+            TestAssert.Equal(ceilingBefore, publisher.EligibilityCeiling);
+            TestAssert.Equal(nextBefore, publisher.NextPublishTick);
+            TestAssert.SequenceEqual(historyBefore, publisher.GetAuthoritativeHistorySnapshot());
+            AssertEmpty(Submit(publisher, roster, finalTick, 1));
+            AssertTicks(new[] { firstTick, finalTick }, Submit(publisher, roster, firstTick, 1));
+        }
+
+        private static void UintMaxInputIsRejectedWithoutScheduleMutation()
+        {
+            uint finalTick = uint.MaxValue - 1U;
+            ActiveRoster roster = CreateRoster(2);
+            TickDrivenFramePublisher publisher = CreatePublisher(roster, finalTick, 1U, 0U, 2);
+            Submit(publisher, roster, finalTick, 0);
+            ulong collectionBefore = publisher.CollectionTick;
+            uint? ceilingBefore = publisher.EligibilityCeiling;
+            uint nextBefore = publisher.NextPublishTick;
+            FrameData[] historyBefore = publisher.GetAuthoritativeHistorySnapshot();
+
+            TestAssert.Throws<ArgumentOutOfRangeException>(
+                () => Submit(publisher, roster, uint.MaxValue, 0));
+            TestAssert.Equal(collectionBefore, publisher.CollectionTick);
+            TestAssert.Equal(ceilingBefore, publisher.EligibilityCeiling);
+            TestAssert.Equal(nextBefore, publisher.NextPublishTick);
+            TestAssert.SequenceEqual(historyBefore, publisher.GetAuthoritativeHistorySnapshot());
+
+            AssertEmpty(publisher.AdvanceOneTick());
+            AssertTicks(new[] { finalTick }, Submit(publisher, roster, finalTick, 1));
         }
 
         private static TickDrivenFramePublisher CreatePublisher(

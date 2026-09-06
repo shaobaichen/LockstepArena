@@ -16,6 +16,13 @@ namespace LockstepArena.Server.FrameSync
             uint maxFutureTickOffset,
             int authoritativeHistoryCapacity)
         {
+            if (initialTick == uint.MaxValue)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(initialTick),
+                    "uint.MaxValue cannot be an initial consumable frame Tick.");
+            }
+
             _coordinator = new AuthoritativeFrameCoordinator(
                 roster,
                 initialTick,
@@ -46,6 +53,11 @@ namespace LockstepArena.Server.FrameSync
 
         public FrameData[] AdvanceOneTick()
         {
+            if (EligibilityCeiling == uint.MaxValue - 1U)
+            {
+                throw new InvalidOperationException("No later consumable Tick can become eligible.");
+            }
+
             ulong nextAdvanceCount = checked(_successfulAdvanceCount + 1UL);
             uint? nextCeiling = GetEligibilityCeiling(nextAdvanceCount);
             FrameData[] publication = nextCeiling.HasValue
@@ -69,7 +81,9 @@ namespace LockstepArena.Server.FrameSync
 
             ulong candidate = (ulong)_initialTick +
                 (successfulAdvanceCount - InputDelayTicks);
-            return (uint)candidate;
+            return candidate >= uint.MaxValue
+                ? uint.MaxValue - 1U
+                : (uint)candidate;
         }
     }
 }
