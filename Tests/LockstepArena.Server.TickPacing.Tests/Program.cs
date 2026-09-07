@@ -76,8 +76,9 @@ namespace LockstepArena.Server.TickPacing.Tests
         private static int Main()
         {
             TestCase[] tests = Combine(
-                ElapsedTickPacerTests.All,
-                StopwatchTickDriverTests.All);
+                ElapsedTickPacerTests.Core,
+                StopwatchTickDriverTests.All,
+                ElapsedTickPacerTests.Golden);
             int failures = 0;
             foreach (TestCase test in tests)
             {

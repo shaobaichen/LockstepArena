@@ -8,7 +8,7 @@ namespace LockstepArena.Server.TickPacing.Tests
 {
     internal static class ElapsedTickPacerTests
     {
-        public static readonly TestCase[] All =
+        public static readonly TestCase[] Core =
         {
             new TestCase("ConstructorRejectsNullPublisher", ConstructorRejectsNullPublisher),
             new TestCase("ConstructorRejectsZeroStopwatchFrequency", ConstructorRejectsZeroStopwatchFrequency),
@@ -32,6 +32,13 @@ namespace LockstepArena.Server.TickPacing.Tests
             new TestCase("TerminalAtEntryReturnsEmptyWithoutRemainderAccumulation", TerminalAtEntryReturnsEmptyWithoutRemainderAccumulation),
             new TestCase("CatchUpStopsNormallyWhenTerminalReachedMidCall", CatchUpStopsNormallyWhenTerminalReachedMidCall),
             new TestCase("FinalMatureIncompleteFrameCanCompleteThroughSubmitAfterTerminal", FinalMatureIncompleteFrameCanCompleteThroughSubmitAfterTerminal),
+        };
+
+        public static readonly TestCase[] Golden =
+        {
+            new TestCase("TwoPlayerWarmupGoldenMatchesExactPublicationAndDigest", TwoPlayerWarmupGoldenMatchesExactPublicationAndDigest),
+            new TestCase("ThreePlayerLateCompletionGoldenMatchesExactPublicationAndDigest", ThreePlayerLateCompletionGoldenMatchesExactPublicationAndDigest),
+            new TestCase("FourPlayerElapsedSegmentationsProduceSameAuthorityAndDigests", FourPlayerElapsedSegmentationsProduceSameAuthorityAndDigests),
         };
 
         private static void ConstructorRejectsNullPublisher()
@@ -333,6 +340,106 @@ namespace LockstepArena.Server.TickPacing.Tests
             TestAssert.Equal(uint.MaxValue, publisher.NextPublishTick);
         }
 
+        private static void TwoPlayerWarmupGoldenMatchesExactPublicationAndDigest()
+        {
+            Gate10GoldenResult result = Gate10TickPacingGoldenVector.RunTwoPlayer();
+
+            AssertBatchTicks(new[] { new[] { 10U } }, result.PublicationBatches);
+            AssertTicks(new[] { 10U }, result.AuthoritativeFrames);
+            TestAssert.SequenceEqual(new[] { 0xAE353BEBCCF29139UL }, result.Digests);
+            AssertState(result.FinalState, 11U, new[]
+            {
+                new PlayerState(100, 0, 101),
+                new PlayerState(-100, 0, 201),
+            });
+            AssertTicks(new[] { 10U }, result.History);
+            TestAssert.Equal(12UL, result.CollectionTick);
+            TestAssert.Equal<uint?>(10U, result.EligibilityCeiling);
+            TestAssert.Equal(11U, result.NextPublishTick);
+        }
+
+        private static void ThreePlayerLateCompletionGoldenMatchesExactPublicationAndDigest()
+        {
+            Gate10GoldenResult result = Gate10TickPacingGoldenVector.RunThreePlayer();
+
+            AssertBatchTicks(new[] { new[] { 20U } }, result.PublicationBatches);
+            AssertTicks(new[] { 20U }, result.AuthoritativeFrames);
+            TestAssert.SequenceEqual(new[] { 0x38CCC825F57B7655UL }, result.Digests);
+            AssertState(result.FinalState, 21U, new[]
+            {
+                new PlayerState(100, 0, 1001),
+                new PlayerState(0, 100, 2001),
+                new PlayerState(-100, 0, 3001),
+            });
+            AssertTicks(new[] { 20U }, result.History);
+            TestAssert.Equal(21UL, result.CollectionTick);
+            TestAssert.Equal<uint?>(20U, result.EligibilityCeiling);
+            TestAssert.Equal(21U, result.NextPublishTick);
+        }
+
+        private static void FourPlayerElapsedSegmentationsProduceSameAuthorityAndDigests()
+        {
+            Gate10GoldenResult primary = Gate10TickPacingGoldenVector.RunFourPlayerPrimary();
+            Gate10GoldenResult alternative = Gate10TickPacingGoldenVector.RunFourPlayerAlternative();
+            uint[][] expectedBatches =
+            {
+                new[] { 100U, 101U },
+                new[] { 102U },
+                new[] { 103U },
+            };
+            ulong[] expectedDigests =
+            {
+                0xD95809E1EB5CDDAAUL,
+                0xA96B83267DD72A7DUL,
+                0x386C4BB11A7EB7E0UL,
+                0x9F41F69F63A24BCBUL,
+            };
+
+            AssertBatchTicks(expectedBatches, primary.PublicationBatches);
+            AssertBatchTicks(expectedBatches, alternative.PublicationBatches);
+            AssertTicks(new[] { 100U, 101U, 102U, 103U }, primary.AuthoritativeFrames);
+            AssertTicks(new[] { 100U, 101U, 102U, 103U }, alternative.AuthoritativeFrames);
+            AssertTicks(new[] { 101U, 102U, 103U }, primary.History);
+            AssertTicks(new[] { 101U, 102U, 103U }, alternative.History);
+            TestAssert.SequenceEqual(expectedDigests, primary.Digests);
+            TestAssert.SequenceEqual(expectedDigests, alternative.Digests);
+            TestAssert.Equal(105UL, primary.CollectionTick);
+            TestAssert.Equal<uint?>(103U, primary.EligibilityCeiling);
+            TestAssert.Equal(104U, primary.NextPublishTick);
+            TestAssert.Equal(105UL, alternative.CollectionTick);
+            TestAssert.Equal<uint?>(103U, alternative.EligibilityCeiling);
+            TestAssert.Equal(104U, alternative.NextPublishTick);
+            AssertState(primary.SimulationStates[0], 101U, new[]
+            {
+                new PlayerState(-200, 0, 10100),
+                new PlayerState(200, 0, 20100),
+                new PlayerState(0, -200, 30100),
+                new PlayerState(0, 200, 40100),
+            });
+            AssertState(primary.SimulationStates[1], 102U, new[]
+            {
+                new PlayerState(-200, 100, 10101),
+                new PlayerState(200, -100, 20101),
+                new PlayerState(100, -200, 30101),
+                new PlayerState(-100, 200, 40101),
+            });
+            AssertState(primary.SimulationStates[2], 103U, new[]
+            {
+                new PlayerState(-300, 100, 10102),
+                new PlayerState(300, -100, 20102),
+                new PlayerState(100, -300, 30102),
+                new PlayerState(-100, 300, 40102),
+            });
+            AssertState(primary.FinalState, 104U, new[]
+            {
+                new PlayerState(-300, 0, 10103),
+                new PlayerState(300, 0, 20103),
+                new PlayerState(0, -300, 30103),
+                new PlayerState(0, 300, 40103),
+            });
+            AssertGoldenResultsEqual(primary, alternative);
+        }
+
         private static ActiveRoster CreateRoster(int count)
         {
             PlayerId[] ids = new PlayerId[count];
@@ -492,6 +599,98 @@ namespace LockstepArena.Server.TickPacing.Tests
             for (int index = 0; index < expectedTicks.Length; index++)
             {
                 TestAssert.Equal(expectedTicks[index], frames[index].Tick);
+            }
+        }
+
+        private static void AssertBatchTicks(uint[][] expectedTicks, FrameData[][] batches)
+        {
+            TestAssert.Equal(expectedTicks.Length, batches.Length);
+            for (int index = 0; index < expectedTicks.Length; index++)
+            {
+                AssertTicks(expectedTicks[index], batches[index]);
+            }
+        }
+
+        private static void AssertState(
+            BattleState state,
+            uint expectedTick,
+            PlayerState[] expectedPlayers)
+        {
+            TestAssert.Equal(expectedTick, state.Tick);
+            TestAssert.Equal(expectedPlayers.Length, state.PlayerCount);
+            for (int slotValue = 0; slotValue < expectedPlayers.Length; slotValue++)
+            {
+                PlayerState expected = expectedPlayers[slotValue];
+                PlayerState actual = state.GetPlayerState(new PlayerSlot(slotValue));
+                TestAssert.Equal(expected.PositionX, actual.PositionX);
+                TestAssert.Equal(expected.PositionZ, actual.PositionZ);
+                TestAssert.Equal(expected.Aim, actual.Aim);
+            }
+        }
+
+        private static void AssertGoldenResultsEqual(
+            Gate10GoldenResult expected,
+            Gate10GoldenResult actual)
+        {
+            TestAssert.Equal(expected.PublicationBatches.Length, actual.PublicationBatches.Length);
+            for (int batchIndex = 0; batchIndex < expected.PublicationBatches.Length; batchIndex++)
+            {
+                AssertFramesEqual(
+                    expected.PublicationBatches[batchIndex],
+                    actual.PublicationBatches[batchIndex]);
+            }
+
+            AssertFramesEqual(expected.AuthoritativeFrames, actual.AuthoritativeFrames);
+            TestAssert.Equal(expected.SimulationStates.Length, actual.SimulationStates.Length);
+            for (int index = 0; index < expected.SimulationStates.Length; index++)
+            {
+                AssertStatesEqual(expected.SimulationStates[index], actual.SimulationStates[index]);
+                TestAssert.Equal(expected.Digests[index], actual.Digests[index]);
+            }
+
+            AssertStatesEqual(expected.FinalState, actual.FinalState);
+        }
+
+        private static void AssertFramesEqual(FrameData[] expected, FrameData[] actual)
+        {
+            TestAssert.Equal(expected.Length, actual.Length);
+            for (int frameIndex = 0; frameIndex < expected.Length; frameIndex++)
+            {
+                FrameData expectedFrame = expected[frameIndex];
+                FrameData actualFrame = actual[frameIndex];
+                TestAssert.Equal(expectedFrame.Tick, actualFrame.Tick);
+                TestAssert.Equal(expectedFrame.Roster.Count, actualFrame.Roster.Count);
+                TestAssert.Equal(expectedFrame.InputCount, actualFrame.InputCount);
+                for (int slotValue = 0; slotValue < expectedFrame.Roster.Count; slotValue++)
+                {
+                    PlayerSlot slot = new PlayerSlot(slotValue);
+                    TestAssert.Equal(
+                        expectedFrame.Roster.GetPlayerId(slot),
+                        actualFrame.Roster.GetPlayerId(slot));
+                    InputFrame expectedInput = expectedFrame.GetInput(slot);
+                    InputFrame actualInput = actualFrame.GetInput(slot);
+                    TestAssert.Equal(expectedInput.Tick, actualInput.Tick);
+                    TestAssert.Equal(expectedInput.PlayerSlot, actualInput.PlayerSlot);
+                    TestAssert.Equal(expectedInput.MoveX, actualInput.MoveX);
+                    TestAssert.Equal(expectedInput.MoveZ, actualInput.MoveZ);
+                    TestAssert.Equal(expectedInput.Aim, actualInput.Aim);
+                }
+            }
+        }
+
+        private static void AssertStatesEqual(BattleState expected, BattleState actual)
+        {
+            TestAssert.Equal(expected.Tick, actual.Tick);
+            TestAssert.Equal(expected.PlayerCount, actual.PlayerCount);
+            for (int slotValue = 0; slotValue < expected.PlayerCount; slotValue++)
+            {
+                PlayerSlot slot = new PlayerSlot(slotValue);
+                TestAssert.Equal(expected.Roster.GetPlayerId(slot), actual.Roster.GetPlayerId(slot));
+                PlayerState expectedPlayer = expected.GetPlayerState(slot);
+                PlayerState actualPlayer = actual.GetPlayerState(slot);
+                TestAssert.Equal(expectedPlayer.PositionX, actualPlayer.PositionX);
+                TestAssert.Equal(expectedPlayer.PositionZ, actualPlayer.PositionZ);
+                TestAssert.Equal(expectedPlayer.Aim, actualPlayer.Aim);
             }
         }
 
