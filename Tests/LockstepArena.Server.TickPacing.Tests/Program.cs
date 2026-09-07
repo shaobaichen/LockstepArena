@@ -75,7 +75,9 @@ namespace LockstepArena.Server.TickPacing.Tests
     {
         private static int Main()
         {
-            TestCase[] tests = ElapsedTickPacerTests.All;
+            TestCase[] tests = Combine(
+                ElapsedTickPacerTests.All,
+                StopwatchTickDriverTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
@@ -93,6 +95,26 @@ namespace LockstepArena.Server.TickPacing.Tests
 
             Console.WriteLine($"RESULT {tests.Length - failures}/{tests.Length} passed");
             return failures == 0 ? 0 : 1;
+        }
+
+        private static TestCase[] Combine(params TestCase[][] groups)
+        {
+            int total = 0;
+            for (int groupIndex = 0; groupIndex < groups.Length; groupIndex++)
+            {
+                total += groups[groupIndex].Length;
+            }
+
+            TestCase[] combined = new TestCase[total];
+            int destinationIndex = 0;
+            for (int groupIndex = 0; groupIndex < groups.Length; groupIndex++)
+            {
+                TestCase[] group = groups[groupIndex];
+                Array.Copy(group, 0, combined, destinationIndex, group.Length);
+                destinationIndex += group.Length;
+            }
+
+            return combined;
         }
     }
 }
