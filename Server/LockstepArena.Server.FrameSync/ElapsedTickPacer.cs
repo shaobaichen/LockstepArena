@@ -57,7 +57,17 @@ namespace LockstepArena.Server.FrameSync
                     break;
                 }
 
-                FrameData[] publication = _publisher.AdvanceOneTick();
+                FrameData[] publication;
+                try
+                {
+                    publication = _publisher.AdvanceOneTick();
+                }
+                catch
+                {
+                    _faulted = true;
+                    throw;
+                }
+
                 for (int index = 0; index < publication.Length; index++)
                 {
                     frames.Add(publication[index]);

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using LockstepArena.Server.FrameSync;
 using LockstepArena.Simulation;
 
@@ -21,6 +23,15 @@ namespace LockstepArena.Server.TickPacing.Tests
             new TestCase("MultipleDueIntervalsCatchUpWithoutCap", MultipleDueIntervalsCatchUpWithoutCap),
             new TestCase("UInt128ArithmeticHandlesLongMaxElapsedDelta", UInt128ArithmeticHandlesLongMaxElapsedDelta),
             new TestCase("InputDelayMaturityRemainsOwnedByTickDrivenPublisher", InputDelayMaturityRemainsOwnedByTickDrivenPublisher),
+            new TestCase("CatchUpFlattensPublicationsInAdvanceOrder", CatchUpFlattensPublicationsInAdvanceOrder),
+            new TestCase("ReturnedPublicationArrayDoesNotBackAuthoritativeHistory", ReturnedPublicationArrayDoesNotBackAuthoritativeHistory),
+            new TestCase("PartialCatchUpFailureKeepsEarlierAdvancesAndRethrowsOriginal", PartialCatchUpFailureKeepsEarlierAdvancesAndRethrowsOriginal),
+            new TestCase("PartialCatchUpFailureReturnsNoPartialBatchAndFaultsPacer", PartialCatchUpFailureReturnsNoPartialBatchAndFaultsPacer),
+            new TestCase("StickyFaultPrecedesNegativeElapsedValidation", StickyFaultPrecedesNegativeElapsedValidation),
+            new TestCase("FaultedPacerCannotMutatePublisherAgain", FaultedPacerCannotMutatePublisherAgain),
+            new TestCase("TerminalAtEntryReturnsEmptyWithoutRemainderAccumulation", TerminalAtEntryReturnsEmptyWithoutRemainderAccumulation),
+            new TestCase("CatchUpStopsNormallyWhenTerminalReachedMidCall", CatchUpStopsNormallyWhenTerminalReachedMidCall),
+            new TestCase("FinalMatureIncompleteFrameCanCompleteThroughSubmitAfterTerminal", FinalMatureIncompleteFrameCanCompleteThroughSubmitAfterTerminal),
         };
 
         private static void ConstructorRejectsNullPublisher()
@@ -167,6 +178,161 @@ namespace LockstepArena.Server.TickPacing.Tests
             AssertTicks(new[] { 100U }, pacer.ProcessElapsedStopwatchTicks(10L));
         }
 
+        private static void CatchUpFlattensPublicationsInAdvanceOrder()
+        {
+            ActiveRoster roster = CreateRoster(1);
+            TickDrivenFramePublisher publisher = CreatePublisher(roster, 100U, 1U);
+            ElapsedTickPacer pacer = new ElapsedTickPacer(publisher, 300L);
+            AssertEmpty(CompleteTick(publisher, roster, 102U));
+            AssertEmpty(CompleteTick(publisher, roster, 100U));
+            AssertEmpty(CompleteTick(publisher, roster, 101U));
+
+            AssertTicks(new[] { 100U, 101U, 102U }, pacer.ProcessElapsedStopwatchTicks(30L));
+        }
+
+        private static void ReturnedPublicationArrayDoesNotBackAuthoritativeHistory()
+        {
+            ActiveRoster roster = CreateRoster(1);
+            TickDrivenFramePublisher publisher = CreatePublisher(roster, 100U, 1U);
+            ElapsedTickPacer pacer = new ElapsedTickPacer(publisher, 300L);
+            AssertEmpty(CompleteTick(publisher, roster, 100U));
+
+            FrameData[] publication = pacer.ProcessElapsedStopwatchTicks(10L);
+            FrameData original = publication[0];
+            publication[0] = CreateStandaloneFrame(roster, 500U);
+
+            FrameData[] history = publisher.GetAuthoritativeHistorySnapshot();
+            TestAssert.Equal(1, history.Length);
+            TestAssert.Same(original, history[0]);
+        }
+
+        private static void PartialCatchUpFailureKeepsEarlierAdvancesAndRethrowsOriginal()
+        {
+            FaultFixture fixture = CreateFaultFixture();
+
+            InvalidOperationException exception = TestAssert.ThrowsAndReturn<InvalidOperationException>(
+                () => fixture.Pacer.ProcessElapsedStopwatchTicks(20L));
+
+            TestAssert.Equal(
+                "A planned publication Tick was absent from pending storage.",
+                exception.Message);
+            TestAssert.Equal(101UL, fixture.Publisher.CollectionTick);
+            TestAssert.Equal<uint?>(101U, fixture.Publisher.EligibilityCeiling);
+            TestAssert.Equal(102U, fixture.Publisher.NextPublishTick);
+            AssertTicks(new[] { 100U, 101U }, fixture.Publisher.GetAuthoritativeHistorySnapshot());
+        }
+
+        private static void PartialCatchUpFailureReturnsNoPartialBatchAndFaultsPacer()
+        {
+            FaultFixture fixture = CreateFaultFixture();
+            FrameData[] sentinel = { CreateStandaloneFrame(fixture.Publisher.Roster, 900U) };
+            FrameData[] result = sentinel;
+
+            try
+            {
+                result = fixture.Pacer.ProcessElapsedStopwatchTicks(20L);
+                throw new InvalidOperationException("Expected partial catch-up failure.");
+            }
+            catch (InvalidOperationException exception)
+                when (exception.Message == "A planned publication Tick was absent from pending storage.")
+            {
+            }
+
+            TestAssert.Same(sentinel, result);
+            InvalidOperationException fault = TestAssert.ThrowsAndReturn<InvalidOperationException>(
+                () => fixture.Pacer.ProcessElapsedStopwatchTicks(0L));
+            TestAssert.Equal("The elapsed Tick pacer is faulted.", fault.Message);
+        }
+
+        private static void StickyFaultPrecedesNegativeElapsedValidation()
+        {
+            FaultFixture fixture = CreateFaultFixture();
+            TestAssert.Throws<InvalidOperationException>(
+                () => fixture.Pacer.ProcessElapsedStopwatchTicks(20L));
+
+            InvalidOperationException exception = TestAssert.ThrowsAndReturn<InvalidOperationException>(
+                () => fixture.Pacer.ProcessElapsedStopwatchTicks(-1L));
+            TestAssert.Equal("The elapsed Tick pacer is faulted.", exception.Message);
+        }
+
+        private static void FaultedPacerCannotMutatePublisherAgain()
+        {
+            FaultFixture fixture = CreateFaultFixture();
+            TestAssert.Throws<InvalidOperationException>(
+                () => fixture.Pacer.ProcessElapsedStopwatchTicks(20L));
+            PublisherSnapshot before = Snapshot(fixture.Publisher);
+
+            InvalidOperationException exception = TestAssert.ThrowsAndReturn<InvalidOperationException>(
+                () => fixture.Pacer.ProcessElapsedStopwatchTicks(300L));
+
+            TestAssert.Equal("The elapsed Tick pacer is faulted.", exception.Message);
+            AssertSnapshot(before, fixture.Publisher);
+        }
+
+        private static void TerminalAtEntryReturnsEmptyWithoutRemainderAccumulation()
+        {
+            TickDrivenFramePublisher publisher = new TickDrivenFramePublisher(
+                CreateRoster(1),
+                uint.MaxValue - 1U,
+                0U,
+                0U,
+                2);
+            ElapsedTickPacer pacer = new ElapsedTickPacer(publisher, 300L);
+            PublisherSnapshot before = Snapshot(publisher);
+
+            AssertEmpty(pacer.ProcessElapsedStopwatchTicks(long.MaxValue));
+            AssertEmpty(pacer.ProcessElapsedStopwatchTicks(long.MaxValue));
+
+            AssertSnapshot(before, publisher);
+        }
+
+        private static void CatchUpStopsNormallyWhenTerminalReachedMidCall()
+        {
+            ActiveRoster roster = CreateRoster(1);
+            TickDrivenFramePublisher publisher = new TickDrivenFramePublisher(
+                roster,
+                uint.MaxValue - 2U,
+                0U,
+                1U,
+                2);
+            ElapsedTickPacer pacer = new ElapsedTickPacer(publisher, 300L);
+            AssertTicks(
+                new[] { uint.MaxValue - 2U },
+                CompleteTick(publisher, roster, uint.MaxValue - 2U));
+            AssertEmpty(CompleteTick(publisher, roster, uint.MaxValue - 1U));
+
+            AssertTicks(
+                new[] { uint.MaxValue - 1U },
+                pacer.ProcessElapsedStopwatchTicks(30L));
+            AssertEmpty(pacer.ProcessElapsedStopwatchTicks(30L));
+            TestAssert.Equal((ulong)uint.MaxValue - 1UL, publisher.CollectionTick);
+            TestAssert.Equal<uint?>(uint.MaxValue - 1U, publisher.EligibilityCeiling);
+            TestAssert.Equal(uint.MaxValue, publisher.NextPublishTick);
+        }
+
+        private static void FinalMatureIncompleteFrameCanCompleteThroughSubmitAfterTerminal()
+        {
+            ActiveRoster roster = CreateRoster(2);
+            TickDrivenFramePublisher publisher = new TickDrivenFramePublisher(
+                roster,
+                uint.MaxValue - 2U,
+                0U,
+                1U,
+                2);
+            ElapsedTickPacer pacer = new ElapsedTickPacer(publisher, 300L);
+            AssertTicks(
+                new[] { uint.MaxValue - 2U },
+                CompleteTick(publisher, roster, uint.MaxValue - 2U));
+            AssertEmpty(SubmitSlot(publisher, roster, uint.MaxValue - 1U, 0));
+
+            AssertEmpty(pacer.ProcessElapsedStopwatchTicks(30L));
+            AssertTicks(
+                new[] { uint.MaxValue - 1U },
+                SubmitSlot(publisher, roster, uint.MaxValue - 1U, 1));
+            AssertEmpty(pacer.ProcessElapsedStopwatchTicks(30L));
+            TestAssert.Equal(uint.MaxValue, publisher.NextPublishTick);
+        }
+
         private static ActiveRoster CreateRoster(int count)
         {
             PlayerId[] ids = new PlayerId[count];
@@ -200,6 +366,95 @@ namespace LockstepArena.Server.TickPacing.Tests
             }
 
             return publication;
+        }
+
+        private static FrameData[] SubmitSlot(
+            TickDrivenFramePublisher publisher,
+            ActiveRoster roster,
+            uint tick,
+            int slotValue)
+        {
+            PlayerSlot slot = new PlayerSlot(slotValue);
+            InputFrame input = new InputFrame(tick, slot, 0, 0, checked((ushort)(100 + slotValue)));
+            return publisher.Submit(roster.GetPlayerId(slot), input);
+        }
+
+        private static FrameData CreateStandaloneFrame(ActiveRoster roster, uint tick)
+        {
+            InputFrame[] inputs = new InputFrame[roster.Count];
+            for (int slotValue = 0; slotValue < roster.Count; slotValue++)
+            {
+                PlayerSlot slot = new PlayerSlot(slotValue);
+                inputs[slotValue] = new InputFrame(
+                    tick,
+                    slot,
+                    0,
+                    0,
+                    checked((ushort)(100 + slotValue)));
+            }
+
+            return FrameData.Create(roster, tick, inputs);
+        }
+
+        private static FaultFixture CreateFaultFixture()
+        {
+            ActiveRoster roster = CreateRoster(1);
+            TickDrivenFramePublisher publisher = new TickDrivenFramePublisher(
+                roster,
+                100U,
+                0U,
+                4U,
+                4);
+            AssertTicks(new[] { 100U }, CompleteTick(publisher, roster, 100U));
+            AssertEmpty(CompleteTick(publisher, roster, 101U));
+            AssertEmpty(CompleteTick(publisher, roster, 102U));
+
+            FieldInfo coordinatorField = GetUniquePrivateField(
+                typeof(TickDrivenFramePublisher),
+                typeof(AuthoritativeFrameCoordinator));
+            AuthoritativeFrameCoordinator coordinator =
+                (AuthoritativeFrameCoordinator)(coordinatorField.GetValue(publisher)
+                    ?? throw new InvalidOperationException("Publisher coordinator was null."));
+            Type pendingType = typeof(Dictionary<uint, StrictFrameCollector>);
+            FieldInfo pendingField = GetUniquePrivateField(
+                typeof(AuthoritativeFrameCoordinator),
+                pendingType);
+            Dictionary<uint, StrictFrameCollector> pending =
+                (Dictionary<uint, StrictFrameCollector>)(pendingField.GetValue(coordinator)
+                    ?? throw new InvalidOperationException("Coordinator pending storage was null."));
+            StrictFrameCollector collector = pending[102U];
+            FieldInfo completedFrameField = GetUniquePrivateField(
+                typeof(StrictFrameCollector),
+                typeof(FrameData));
+            completedFrameField.SetValue(collector, CreateStandaloneFrame(roster, 101U));
+
+            return new FaultFixture(
+                publisher,
+                new ElapsedTickPacer(publisher, 300L));
+        }
+
+        private static FieldInfo GetUniquePrivateField(Type declaringType, Type fieldType)
+        {
+            FieldInfo? match = null;
+            FieldInfo[] fields = declaringType.GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
+            for (int index = 0; index < fields.Length; index++)
+            {
+                if (fields[index].FieldType != fieldType)
+                {
+                    continue;
+                }
+
+                if (match is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"Multiple private {fieldType.Name} fields found on {declaringType.Name}.");
+                }
+
+                match = fields[index];
+            }
+
+            return match ?? throw new InvalidOperationException(
+                $"No private {fieldType.Name} field found on {declaringType.Name}.");
         }
 
         private static PublisherSnapshot Snapshot(TickDrivenFramePublisher publisher)
@@ -261,6 +516,21 @@ namespace LockstepArena.Server.TickPacing.Tests
             public uint NextPublishTick { get; }
 
             public FrameData[] History { get; }
+        }
+
+        private sealed class FaultFixture
+        {
+            public FaultFixture(
+                TickDrivenFramePublisher publisher,
+                ElapsedTickPacer pacer)
+            {
+                Publisher = publisher;
+                Pacer = pacer;
+            }
+
+            public TickDrivenFramePublisher Publisher { get; }
+
+            public ElapsedTickPacer Pacer { get; }
         }
     }
 }
