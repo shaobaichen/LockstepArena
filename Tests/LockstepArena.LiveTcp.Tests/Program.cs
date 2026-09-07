@@ -95,7 +95,8 @@ namespace LockstepArena.LiveTcp.Tests
             TestCase[] tests = Combine(
                 ScheduledProtocolAuthorityTests.All,
                 TcpServerBattlePumpTests.All,
-                TcpClientBattlePumpTests.All);
+                TcpClientBattlePumpTests.All,
+                LiveBattleLoopbackTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {
