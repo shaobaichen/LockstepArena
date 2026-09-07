@@ -172,15 +172,32 @@ private static void ForceNextPollAdvances(
 ```
 
 `ForceNextPollAdvances` obtains the driver's unique `Stopwatch` and unique
-`long` baseline field. With `F = Stopwatch.Frequency`, compute:
+`long` baseline field. It must call `stopwatch.Stop()` first, then capture:
+
+```text
+stableElapsed = stopwatch.ElapsedTicks
+```
+
+With `F = Stopwatch.Frequency`, compute:
 
 ```text
 requiredElapsed = ceil(F * dueAdvances / SimulationConfig.TickRate)
                 = (UInt128(F) * dueAdvances + TickRate - 1) / TickRate
-baseline = stopwatch.ElapsedTicks - checked((long)requiredElapsed)
+baseline = checked(stableElapsed - checked((long)requiredElapsed))
 ```
 
-Only small bounded `dueAdvances` values are used. Do not sleep or assert real elapsed time.
+Write that value into the unique reflected `long` baseline field. The stopped
+Stopwatch makes the next Poll's delta exactly `requiredElapsed`. After a
+successful Poll, the driver baseline equals the same `stableElapsed`, so a
+later Poll without another fixture call observes exactly zero elapsed delta.
+Only small bounded `dueAdvances` values are used.
+
+`ScheduledPollPublishesAtExactMaturity`,
+`PollFailureFaultsAndRethrowsOriginal`,
+`ServerPumpNoReadableBytesStillPollsExactlyOnce`, and
+`SubmitOutputsAreWrittenBeforeSamePumpPollOutputs` must use this stopped-clock
+fixture. Do not sleep or assert real elapsed time. The real live loopback
+Golden must use its genuinely running Stopwatch and must not call this fixture.
 
 For test 13, reproduce the Gate 10 fault fixture: validly create pending complete frames, locate the unique Coordinator/pending dictionary/collector by type, corrupt only the future completed Frame's Tick, force the later Poll, and assert original exception plus sticky rejection.
 
@@ -292,9 +309,18 @@ Test 17 accesses the unique scheduled Processor/Publisher through the approved
 reflection fixture, forces exactly one due Advance, calls `PumpOnce()` with no
 readable network data, and asserts Publisher `CollectionTick` increased once.
 
-Test 18 uses receive length 16, offset 3, capacity 3 and a framed payload longer
-than three bytes. One Pump cannot complete/process it, proving no second Read.
-Do not assert an individual `Read` return size.
+Test 18 uses receive length 16, offset 3, capacity 3. Queue exactly one complete
+four-byte framed stream `00 00 00 00`, the big-endian prefix for a legal
+zero-length payload. Before calling the Pump, a bounded test-only readiness
+loop must require `Socket.Available >= 4`.
+
+The correct single Read consumes at most three bytes, leaves the prefix
+incomplete, processes no submission, and returns normally. An incorrect second
+Read necessarily consumes the remaining byte, completes the zero-length
+payload, parses the protobuf default submission, and reaches an observable
+`ProtocolMapper` rejection because the nested Input is missing. Assert this
+normal-versus-failure distinction without asserting an individual `Read`
+return size and without adding production I/O injection.
 
 Test 19 waits with a test-only bounded readiness loop until the complete two-
 submission stream is queued, then uses a read capacity large enough for the

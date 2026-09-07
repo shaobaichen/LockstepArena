@@ -242,6 +242,15 @@ if Read returns zero, `EndOfStreamException` is thrown before authority Poll.
 At most one Read occurs per call. Only the valid read segment is fed to the
 decoder; no exact-sized input array is created.
 
+The conclusive one-Read test uses receive capacity 3 and queues exactly the
+four-byte big-endian zero-length prefix `00 00 00 00`. A bounded test-only
+readiness loop first requires `Socket.Available >= 4`. One correct Read can
+consume at most three prefix bytes, so no submission completes and the Pump
+returns normally. An incorrect second Read necessarily consumes the final
+prefix byte, completes a zero-length payload, and reaches the observable
+protobuf/Mapper rejection path. The test asserts no individual Read size and
+adds no production I/O hook.
+
 One Read may produce zero, one, or multiple submissions. All are processed
 before the Tick Poll. Submit-produced authority is written before Poll-produced
 authority from the same call.
@@ -357,11 +366,29 @@ TickDrivenFramePublisher -> unique AuthoritativeFrameCoordinator
 Coordinator -> unique Dictionary<uint, StrictFrameCollector>
 ```
 
-To make exactly N Advances due without sleeping, the fixture reads the real
-Stopwatch's current ticks and sets the baseline backward by the smallest
-integer elapsed delta whose rational `elapsed * 30 / Stopwatch.Frequency`
-produces N due Advances. It uses `UInt128` ceiling arithmetic and never changes
-production pacing code.
+To make exactly N Advances due without sleeping, the fixture first calls
+`stopwatch.Stop()` on the reflected Stopwatch and captures its now-stable
+`stableElapsed = stopwatch.ElapsedTicks`. With `F = Stopwatch.Frequency`, it
+uses `UInt128` ceiling arithmetic to compute:
+
+```text
+requiredElapsed = ceil(F * N / SimulationConfig.TickRate)
+                = (UInt128(F) * N + TickRate - 1) / TickRate
+baseline = stableElapsed - checked((long)requiredElapsed)
+```
+
+It writes that checked bounded baseline into the unique reflected `long`
+field. Because the Stopwatch remains stopped, Poll reads exactly
+`stableElapsed`, so its elapsed delta is exactly `requiredElapsed`. A successful
+Poll commits its baseline to that same stopped value, and a later Poll without
+another fixture call observes exactly zero elapsed delta.
+
+`ScheduledPollPublishesAtExactMaturity`,
+`PollFailureFaultsAndRethrowsOriginal`,
+`ServerPumpNoReadableBytesStillPollsExactlyOnce`, and
+`SubmitOutputsAreWrittenBeforeSamePumpPollOutputs` all use this fixture. The
+real live loopback Golden uses a genuinely running Stopwatch and never uses the
+stopped-clock fixture. Production pacing code is unchanged.
 
 The existing Gate 10 pending-collector corruption pattern may create one
 deterministic later-Poll failure. Reflection exists only in Gate 11 tests. No
