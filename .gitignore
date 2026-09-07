@@ -75,6 +75,7 @@ ExportedObj/
 !Tests/LockstepArena.TcpEndToEnd.Tests/LockstepArena.TcpEndToEnd.Tests.csproj
 !Tests/LockstepArena.Server.TickAuthority.Tests/LockstepArena.Server.TickAuthority.Tests.csproj
 !Tests/LockstepArena.Server.TickPacing.Tests/LockstepArena.Server.TickPacing.Tests.csproj
+!Tests/LockstepArena.LiveTcp.Tests/LockstepArena.LiveTcp.Tests.csproj
 [Bb]in/
 [Oo]bj/
 /.artifacts/
