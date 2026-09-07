@@ -531,3 +531,117 @@ Relative to the frozen Gate 9 base, committed diff must be zero for:
 Gate 10 adds no Timer, background thread, `Task`, async loop, Unity `Update`/`FixedUpdate`, production TCP lifecycle, UDP/KCP, client clock synchronization, RTT compensation, adaptive InputDelay, timeout, neutral/repeat-last input, prediction, snapshot, rollback, replay, reconnect, heartbeat, Room/Login/Session, generic clock/scheduler abstraction, DI, EventBus, or pacing recovery framework.
 
 Gate 10 stops after implementation evidence and independent review. It does not begin Gate 11.
+
+## 17. Implementation Evidence
+
+Fresh verification was completed on 2026-09-07 from frozen Gate 9 base
+`e041efb290e1df609fc5003d619e4e19f70ded78` and approved Planning HEAD
+`a9fb4608450d200ee609a810da4feac3e43d25db`.
+
+Implementation commits before this evidence update were:
+
+```text
+a55c94b036960369627fe5b091f3b083d2c560ae  feat: pace authority from elapsed stopwatch ticks
+74c1af7f9971a1b888ef762d3922502f9ca099b1  feat: contain tick pacing failures
+17f82b0e76d027766f289bb05a8f4cebb8dc4871  feat: drive authority pacing from stopwatch polls
+3b2408387d2adbb86901c85cde30801d1ff66cd9  test: prove stopwatch-paced authority determinism
+```
+
+The evidence parent was
+`3b2408387d2adbb86901c85cde30801d1ff66cd9`.
+
+### Restore and build evidence
+
+The restore-assets preflight found missing assets for ten existing projects in
+the new worktree. They were restored using their frozen project contracts; no
+dependency, version, or project file changed. The complete matrix was then
+restarted from build 1. All 15 independent Release builds completed with zero
+warnings and zero errors.
+
+### .NET execution evidence
+
+```text
+Gate 3 Simulation         RESULT 38/38 passed
+Gate 4 FrameSync          RESULT 32/32 passed
+Gate 5 Protocol           RESULT 35/35 passed
+Gate 6 ProtocolAuthority  RESULT 24/24 passed
+Gate 7 StreamFraming      RESULT 32/32 passed
+Gate 8 TCP watchdog       RESULT 8/8 passed within 30 seconds
+Gate 9 TickAuthority      RESULT 27/27 passed
+Gate 10 TickPacing        RESULT 27/27 passed
+Gate 3 Server Golden      Tick=1000 Players=4 Digest=89A7DD66F8D9E871
+```
+
+The frozen Gate 8 test `RealTcpRoundTripMatchesApprovedAuthoritySequenceStatesAndDigests`
+passed and therefore retained its Tick 103 and `386C4BB11A7EB7E0` Digest proof.
+
+The Gate 10 `long.MaxValue` fixture passed with a Publisher starting at
+`uint.MaxValue - 3`, a frequency and elapsed delta both equal to
+`long.MaxValue`, and exactly two successful logical Advances before terminal
+eligibility stopped the mathematically due 30-Advance catch-up.
+
+The reflection-only partial-failure fixture preserved the two already
+authoritative Frames 100 and 101, `CollectionTick = 101`,
+`EligibilityCeiling = 101`, and `NextPublishTick = 102`. It rethrew the original
+`InvalidOperationException`, returned no partial batch, entered sticky fault,
+and rejected every later elapsed-processing call before further mutation.
+
+The actual-only Golden vector produced:
+
+```text
+2 players: publication [10], final Tick 11, Digest AE353BEBCCF29139
+3 players: late-completion publication [20], final Tick 21, Digest 38CCC825F57B7655
+4 players: batches [100,101], [102], [103]; retained history 101,102,103
+4-player Digests: D95809E1EB5CDDAA, A96B83267DD72A7D,
+                  386C4BB11A7EB7E0, 9F41F69F63A24BCB
+4-player final Tick 104; primary and alternate elapsed segmentations matched
+```
+
+The real driver tests confirmed construction starts a `Stopwatch` baseline
+without advancing authority and that synchronous `Poll()` delegates elapsed
+ticks to the pacer without adding timing-sensitive duration assertions or a
+second recovery state.
+
+### Code generation and Unity evidence
+
+Pinned Protocol regeneration used the existing CodeGen project, produced
+exactly `LockstepArenaProtocol.g.cs`, and left Schema and Generated paths
+diff-clean.
+
+Three independent Unity 6000.3.10f1 EditMode runs generated fresh NUnit XML:
+
+```text
+.artifacts/gate10-unity/gate7-results.xml
+  total=1 passed=1 failed=0
+  UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden = Passed
+
+.artifacts/gate10-unity/gate5-results.xml
+  total=2 passed=2 failed=0
+  GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads = Passed
+  UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector = Passed
+
+.artifacts/gate10-unity/gate3-results.xml
+  total=1 passed=1 failed=0
+  UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector = Passed
+```
+
+After each run, only individually inspected Unity-generated worktree-local
+serialization changes were restored. No broad reset or clean was used.
+
+### Boundary and repository evidence
+
+- Frozen `AuthoritativeFrameCoordinator.cs` and `TickDrivenFramePublisher.cs`
+  have zero committed diff from Gate 9.
+- Simulation, Protocol, StreamFraming, ProtocolAuthority, Gate 8 TCP, existing
+  tests, Assets, ProjectSettings, manifest, and packages-lock are unchanged.
+- FrameSync production adds exactly `ElapsedTickPacer.cs` and
+  `StopwatchTickDriver.cs`; the Gate 10 test project contains exactly five files
+  and two direct ProjectReferences.
+- `.gitignore` adds exactly the one approved authored-project exception.
+- Expected Golden Digests occur only in consumer tests, never production or the
+  actual-only Golden vector. Reflection remains test-only.
+- Production scope, dependency, symlink, script, generated-source, tracked
+  artifact, embedded-package artifact, and whitespace audits passed.
+- The ordinary checkout remained exactly at its two protected user-owned
+  modifications: `Assets/Settings/Mobile_RPAsset.asset` and
+  `ProjectSettings/ShaderGraphSettings.asset`.
