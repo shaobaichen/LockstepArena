@@ -11,5 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Packages\com.locksteparena.client-prediction\Runtime\LockstepArena.Client.Prediction.csproj" />
     <ProjectReference Include="..\..\Packages\com.locksteparena.simulation\Runtime\LockstepArena.Simulation.csproj" />
+    <Compile Include="..\..\Packages\com.locksteparena.client-prediction\Tests\Editor\Gate12PredictionGoldenVector.cs"
+             Link="Gate12PredictionGoldenVector.cs" />
   </ItemGroup>
 </Project>

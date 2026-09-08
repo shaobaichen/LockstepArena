@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using LockstepArena.Client.Prediction.Verification;
 using LockstepArena.Simulation;
 
 namespace LockstepArena.Client.Prediction.Tests
@@ -37,6 +38,9 @@ namespace LockstepArena.Client.Prediction.Tests
             new TestCase("EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames", EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames),
             new TestCase("LatestPendingMismatchRollsBackWithoutLaterReplay", LatestPendingMismatchRollsBackWithoutLaterReplay),
             new TestCase("DirtyReplayRebuildsRetainedSnapshots", DirtyReplayRebuildsRetainedSnapshots),
+            new TestCase("CorrectPredictionGoldenConvergesCleanly", CorrectPredictionGoldenConvergesCleanly),
+            new TestCase("WrongPredictionGoldenFindsTick101AndConvergesAfterReplay", WrongPredictionGoldenFindsTick101AndConvergesAfterReplay),
+            new TestCase("TwinPredictorsMatchDigestsAfterEveryOperation", TwinPredictorsMatchDigestsAfterEveryOperation),
             new TestCase("ImpossibleInternalInvariantEntersStickyFailStopWithoutPartialCommit", ImpossibleInternalInvariantEntersStickyFailStopWithoutPartialCommit),
             new TestCase("StickyFaultRejectsBeforeArgumentValidation", StickyFaultRejectsBeforeArgumentValidation),
             new TestCase("FinalAuthoritativeFrameDrainsTerminalPredictionWithoutWrap", FinalAuthoritativeFrameDrainsTerminalPredictionWithoutWrap),
@@ -452,6 +456,43 @@ namespace LockstepArena.Client.Prediction.Tests
             AssertPlayer(timeline.AuthoritativeState, 0, -100, 100, 101);
         }
 
+        private static void CorrectPredictionGoldenConvergesCleanly()
+        {
+            Gate12PredictionGoldenResult result = Gate12PredictionGoldenVector.RunCorrect();
+
+            AssertGoldenState(result.PredictedStatesAfterPredict[0], 101U, 0xD95809E1EB5CDDAAUL, 0, -200, 0, 10100, 1, 200, 0, 20100, 2, 0, -200, 30100, 3, 0, 200, 40100);
+            AssertGoldenState(result.PredictedStatesAfterPredict[1], 102U, 0xA96B83267DD72A7DUL, 0, -200, 100, 10101, 1, 200, -100, 20101, 2, 100, -200, 30101, 3, -100, 200, 40101);
+            AssertGoldenState(result.PredictedStatesAfterPredict[2], 103U, 0x386C4BB11A7EB7E0UL, 0, -300, 100, 10102, 1, 300, -100, 20102, 2, 100, -300, 30102, 3, -100, 300, 40102);
+            AssertGoldenReconciliation(result, new[] { false, false, false }, new[] { 2, 1, 0 });
+            AssertGoldenState(result.AuthoritativeStatesAfterReconcile[0], 101U, 0xD95809E1EB5CDDAAUL, 0, -200, 0, 10100, 1, 200, 0, 20100, 2, 0, -200, 30100, 3, 0, 200, 40100);
+            AssertGoldenState(result.AuthoritativeStatesAfterReconcile[1], 102U, 0xA96B83267DD72A7DUL, 0, -200, 100, 10101, 1, 200, -100, 20101, 2, 100, -200, 30101, 3, -100, 200, 40101);
+            AssertGoldenState(result.AuthoritativeStatesAfterReconcile[2], 103U, 0x386C4BB11A7EB7E0UL, 0, -300, 100, 10102, 1, 300, -100, 20102, 2, 100, -300, 30102, 3, -100, 300, 40102);
+            AssertStatesEqual(result.AuthoritativeStatesAfterReconcile[2], result.PredictedStatesAfterReconcile[2]);
+        }
+
+        private static void WrongPredictionGoldenFindsTick101AndConvergesAfterReplay()
+        {
+            Gate12PredictionGoldenResult result = Gate12PredictionGoldenVector.RunWrong();
+
+            AssertGoldenState(result.PredictedStatesAfterPredict[1], 102U, 0x8506E4507001B972UL, 0, -200, 100, 10101, 1, 200, -100, 20101, 2, -100, -200, 30101, 3, -100, 200, 40101);
+            AssertGoldenState(result.PredictedStatesAfterPredict[2], 103U, 0x7D0D3A230618500FUL, 0, -300, 100, 10102, 1, 300, -100, 20102, 2, -100, -300, 30102, 3, -100, 300, 40102);
+            AssertGoldenReconciliation(result, new[] { false, true, false }, new[] { 2, 1, 0 });
+            AssertGoldenState(result.AuthoritativeStatesAfterReconcile[1], 102U, 0xA96B83267DD72A7DUL, 0, -200, 100, 10101, 1, 200, -100, 20101, 2, 100, -200, 30101, 3, -100, 200, 40101);
+            AssertGoldenState(result.PredictedStatesAfterReconcile[1], 103U, 0x386C4BB11A7EB7E0UL, 0, -300, 100, 10102, 1, 300, -100, 20102, 2, 100, -300, 30102, 3, -100, 300, 40102);
+            AssertGoldenState(result.AuthoritativeStatesAfterReconcile[2], 103U, 0x386C4BB11A7EB7E0UL, 0, -300, 100, 10102, 1, 300, -100, 20102, 2, 100, -300, 30102, 3, -100, 300, 40102);
+            AssertStatesEqual(result.AuthoritativeStatesAfterReconcile[2], result.PredictedStatesAfterReconcile[2]);
+        }
+
+        private static void TwinPredictorsMatchDigestsAfterEveryOperation()
+        {
+            AssertGoldenResultsEqual(
+                Gate12PredictionGoldenVector.RunCorrect(),
+                Gate12PredictionGoldenVector.RunCorrect());
+            AssertGoldenResultsEqual(
+                Gate12PredictionGoldenVector.RunWrong(),
+                Gate12PredictionGoldenVector.RunWrong());
+        }
+
         private static void ImpossibleInternalInvariantEntersStickyFailStopWithoutPartialCommit()
         {
             ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
@@ -616,6 +657,77 @@ namespace LockstepArena.Client.Prediction.Tests
             TestAssert.Equal(x, player.PositionX);
             TestAssert.Equal(z, player.PositionZ);
             TestAssert.Equal(aim, player.Aim);
+        }
+
+        private static void AssertGoldenReconciliation(
+            Gate12PredictionGoldenResult result,
+            bool[] expectedDirty,
+            int[] expectedPending)
+        {
+            TestAssert.Equal(3, result.DirtyResults.Length);
+            TestAssert.Equal(3, result.PendingCountsAfterReconcile.Length);
+            for (int index = 0; index < 3; index++)
+            {
+                TestAssert.Equal(expectedDirty[index], result.DirtyResults[index]);
+                TestAssert.Equal(expectedPending[index], result.PendingCountsAfterReconcile[index]);
+            }
+        }
+
+        private static void AssertGoldenResultsEqual(
+            Gate12PredictionGoldenResult left,
+            Gate12PredictionGoldenResult right)
+        {
+            for (int index = 0; index < 3; index++)
+            {
+                AssertStatesEqual(left.PredictedStatesAfterPredict[index], right.PredictedStatesAfterPredict[index]);
+                AssertStatesEqual(left.AuthoritativeStatesAfterReconcile[index], right.AuthoritativeStatesAfterReconcile[index]);
+                AssertStatesEqual(left.PredictedStatesAfterReconcile[index], right.PredictedStatesAfterReconcile[index]);
+                TestAssert.Equal(left.DirtyResults[index], right.DirtyResults[index]);
+                TestAssert.Equal(left.PendingCountsAfterReconcile[index], right.PendingCountsAfterReconcile[index]);
+            }
+        }
+
+        private static void AssertStatesEqual(BattleState expected, BattleState actual)
+        {
+            TestAssert.Equal(StateDigest.Compute(expected), StateDigest.Compute(actual));
+            TestAssert.Equal(expected.Tick, actual.Tick);
+            TestAssert.Equal(expected.PlayerCount, actual.PlayerCount);
+            TestAssert.Equal(true, expected.Roster.HasSameStructure(actual.Roster));
+            for (int index = 0; index < expected.PlayerCount; index++)
+            {
+                PlayerSlot slot = new PlayerSlot(index);
+                PlayerState expectedPlayer = expected.GetPlayerState(slot);
+                AssertPlayer(actual, index, expectedPlayer.PositionX, expectedPlayer.PositionZ, expectedPlayer.Aim);
+            }
+        }
+
+        private static void AssertGoldenState(
+            BattleState state,
+            uint tick,
+            ulong digest,
+            int slot0,
+            int x0,
+            int z0,
+            ushort aim0,
+            int slot1,
+            int x1,
+            int z1,
+            ushort aim1,
+            int slot2,
+            int x2,
+            int z2,
+            ushort aim2,
+            int slot3,
+            int x3,
+            int z3,
+            ushort aim3)
+        {
+            TestAssert.Equal(tick, state.Tick);
+            TestAssert.Equal(digest, StateDigest.Compute(state));
+            AssertPlayer(state, slot0, x0, z0, aim0);
+            AssertPlayer(state, slot1, x1, z1, aim1);
+            AssertPlayer(state, slot2, x2, z2, aim2);
+            AssertPlayer(state, slot3, x3, z3, aim3);
         }
     }
 }
