@@ -100,6 +100,99 @@ namespace LockstepArena.Client.Prediction
             }
         }
 
+        public bool ReconcileAuthoritative(FrameData authoritativeFrame)
+        {
+            ThrowIfFaulted();
+            if (authoritativeFrame is null)
+            {
+                throw new ArgumentNullException(nameof(authoritativeFrame));
+            }
+
+            if (authoritativeFrame.Tick != _authoritativeState.Tick)
+            {
+                throw new ArgumentException(
+                    "Authoritative frame tick must match the authoritative state tick.",
+                    nameof(authoritativeFrame));
+            }
+
+            if (!_authoritativeState.Roster.HasSameStructure(authoritativeFrame.Roster))
+            {
+                throw new ArgumentException(
+                    "Authoritative frame roster must match the prediction roster.",
+                    nameof(authoritativeFrame));
+            }
+
+            if (_authoritativeState.Tick == uint.MaxValue)
+            {
+                throw new InvalidOperationException("The authoritative timeline is exhausted.");
+            }
+
+            EnsureInvariantOrFault(_authoritativeState, _predictedState, _history);
+
+            if (_history.Length == 0)
+            {
+                return ReconcileAtAlignedFrontier(authoritativeFrame);
+            }
+
+            if (!FramesHaveSameValue(_history[0].PredictedFrame, authoritativeFrame))
+            {
+                throw new InvalidOperationException(
+                    "Dirty reconciliation is added in the next implementation checkpoint.");
+            }
+
+            return ReconcileClean(authoritativeFrame);
+        }
+
+        private bool ReconcileAtAlignedFrontier(FrameData authoritativeFrame)
+        {
+            try
+            {
+                var simulation = new BattleSimulation(_authoritativeState);
+                simulation.Step(authoritativeFrame);
+
+                BattleState candidateState = simulation.State;
+                PredictionRecord[] candidateHistory = Array.Empty<PredictionRecord>();
+                EnsureInvariantOrFault(candidateState, candidateState, candidateHistory);
+
+                _authoritativeState = candidateState;
+                _predictedState = candidateState;
+                _history = candidateHistory;
+                return false;
+            }
+            catch
+            {
+                _faulted = true;
+                throw;
+            }
+        }
+
+        private bool ReconcileClean(FrameData authoritativeFrame)
+        {
+            try
+            {
+                var simulation = new BattleSimulation(_authoritativeState);
+                simulation.Step(authoritativeFrame);
+
+                var candidateHistory = new PredictionRecord[_history.Length - 1];
+                Array.Copy(_history, 1, candidateHistory, 0, candidateHistory.Length);
+
+                BattleState candidateAuthoritativeState = simulation.State;
+                EnsureInvariantOrFault(
+                    candidateAuthoritativeState,
+                    _predictedState,
+                    candidateHistory);
+
+                _authoritativeState = candidateAuthoritativeState;
+                _history = candidateHistory;
+                return false;
+            }
+            catch
+            {
+                _faulted = true;
+                throw;
+            }
+        }
+
         private void ThrowIfFaulted()
         {
             if (_faulted)
@@ -187,6 +280,32 @@ namespace LockstepArena.Client.Prediction
                 if (leftPlayer.PositionX != rightPlayer.PositionX ||
                     leftPlayer.PositionZ != rightPlayer.PositionZ ||
                     leftPlayer.Aim != rightPlayer.Aim)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool FramesHaveSameValue(FrameData left, FrameData right)
+        {
+            if (left.Tick != right.Tick ||
+                left.InputCount != right.InputCount ||
+                !left.Roster.HasSameStructure(right.Roster))
+            {
+                return false;
+            }
+
+            for (int index = 0; index < left.InputCount; index++)
+            {
+                PlayerSlot slot = new PlayerSlot(index);
+                InputFrame leftInput = left.GetInput(slot);
+                InputFrame rightInput = right.GetInput(slot);
+                if (leftInput.PlayerSlot != rightInput.PlayerSlot ||
+                    leftInput.MoveX != rightInput.MoveX ||
+                    leftInput.MoveZ != rightInput.MoveZ ||
+                    leftInput.Aim != rightInput.Aim)
                 {
                     return false;
                 }

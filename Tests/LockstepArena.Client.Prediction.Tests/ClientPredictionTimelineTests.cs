@@ -19,6 +19,16 @@ namespace LockstepArena.Client.Prediction.Tests
             new TestCase("PredictionUsesCanonicalSlotOrder", PredictionUsesCanonicalSlotOrder),
             new TestCase("FinalConsumablePredictionReachesUintMaxValue", FinalConsumablePredictionReachesUintMaxValue),
             new TestCase("PredictionBeyondTerminalIsRejectedWithoutMutation", PredictionBeyondTerminalIsRejectedWithoutMutation),
+            new TestCase("ReconcileRejectsNullFrameWithoutMutation", ReconcileRejectsNullFrameWithoutMutation),
+            new TestCase("ReconcileRejectsWrongTickWithoutMutation", ReconcileRejectsWrongTickWithoutMutation),
+            new TestCase("ReconcileRejectsRosterMismatchWithoutMutation", ReconcileRejectsRosterMismatchWithoutMutation),
+            new TestCase("ReconcileBoundaryFailureDoesNotFaultSubsequentValidWork", ReconcileBoundaryFailureDoesNotFaultSubsequentValidWork),
+            new TestCase("ReconcileAtAlignedFrontierAdvancesBothTimelinesCleanly", ReconcileAtAlignedFrontierAdvancesBothTimelinesCleanly),
+            new TestCase("StructurallyEqualRosterInstancesAreAccepted", StructurallyEqualRosterInstancesAreAccepted),
+            new TestCase("EqualFrameDataInDifferentInstancesIsClean", EqualFrameDataInDifferentInstancesIsClean),
+            new TestCase("CanonicallyEqualFramesFromDifferentConstructionOrderAreClean", CanonicallyEqualFramesFromDifferentConstructionOrderAreClean),
+            new TestCase("CleanReconcileRemovesOldestWithoutRecomputingPredictedState", CleanReconcileRemovesOldestWithoutRecomputingPredictedState),
+            new TestCase("CleanReconcileRetainsLaterPredictionSnapshots", CleanReconcileRetainsLaterPredictionSnapshots),
         };
 
         private static void ConstructorRejectsNullInitialState()
@@ -160,6 +170,158 @@ namespace LockstepArena.Client.Prediction.Tests
             TestAssert.Throws<InvalidOperationException>(() => timeline.Predict(CreateNeutralFrame(predicted.Roster, uint.MaxValue)));
 
             AssertUnchanged(timeline, authoritative, predicted, 1);
+        }
+
+        private static void ReconcileRejectsNullFrameWithoutMutation()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            BattleState authoritative = timeline.AuthoritativeState;
+            BattleState predicted = timeline.PredictedState;
+
+            TestAssert.Throws<ArgumentNullException>(() => timeline.ReconcileAuthoritative(null!));
+
+            AssertUnchanged(timeline, authoritative, predicted, 0);
+        }
+
+        private static void ReconcileRejectsWrongTickWithoutMutation()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            timeline.Predict(CreateNeutralFrame(timeline.PredictedState.Roster, 10U));
+            BattleState authoritative = timeline.AuthoritativeState;
+            BattleState predicted = timeline.PredictedState;
+
+            TestAssert.Throws<ArgumentException>(() => timeline.ReconcileAuthoritative(CreateNeutralFrame(predicted.Roster, 9U)));
+            AssertUnchanged(timeline, authoritative, predicted, 1);
+            TestAssert.Throws<ArgumentException>(() => timeline.ReconcileAuthoritative(CreateNeutralFrame(predicted.Roster, 11U)));
+            AssertUnchanged(timeline, authoritative, predicted, 1);
+        }
+
+        private static void ReconcileRejectsRosterMismatchWithoutMutation()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            timeline.Predict(CreateNeutralFrame(timeline.PredictedState.Roster, 10U));
+            ActiveRoster differentRoster = new ActiveRoster(new[] { new PlayerId(900UL), new PlayerId(700UL) });
+            BattleState authoritative = timeline.AuthoritativeState;
+            BattleState predicted = timeline.PredictedState;
+
+            TestAssert.Throws<ArgumentException>(() => timeline.ReconcileAuthoritative(CreateNeutralFrame(differentRoster, 10U)));
+
+            AssertUnchanged(timeline, authoritative, predicted, 1);
+        }
+
+        private static void ReconcileBoundaryFailureDoesNotFaultSubsequentValidWork()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.AuthoritativeState.Roster;
+            TestAssert.Throws<ArgumentException>(() => timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, 11U)));
+
+            bool dirty = timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, 10U));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(11U, timeline.AuthoritativeState.Tick);
+            TestAssert.Same(timeline.AuthoritativeState, timeline.PredictedState);
+        }
+
+        private static void ReconcileAtAlignedFrontierAdvancesBothTimelinesCleanly()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+
+            bool dirty = timeline.ReconcileAuthoritative(CreateNeutralFrame(timeline.AuthoritativeState.Roster, 10U));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(11U, timeline.AuthoritativeState.Tick);
+            TestAssert.Same(timeline.AuthoritativeState, timeline.PredictedState);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
+        }
+
+        private static void StructurallyEqualRosterInstancesAreAccepted()
+        {
+            ActiveRoster originalRoster = CreateRoster(3);
+            var timeline = new ClientPredictionTimeline(CreateState(10U, originalRoster), 4);
+            ActiveRoster equivalentRoster = CreateRoster(3);
+
+            bool dirty = timeline.ReconcileAuthoritative(CreateNeutralFrame(equivalentRoster, 10U));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(11U, timeline.AuthoritativeState.Tick);
+        }
+
+        private static void EqualFrameDataInDifferentInstancesIsClean()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateNeutralFrame(roster, 10U));
+            FrameData separatelyAllocatedAuthority = CreateNeutralFrame(roster, 10U);
+
+            bool dirty = timeline.ReconcileAuthoritative(separatelyAllocatedAuthority);
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
+        }
+
+        private static void CanonicallyEqualFramesFromDifferentConstructionOrderAreClean()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 3, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            FrameData predicted = FrameData.Create(
+                roster,
+                10U,
+                new[]
+                {
+                    new InputFrame(10U, new PlayerSlot(2), -1, 0, 3002),
+                    new InputFrame(10U, new PlayerSlot(0), 1, 0, 3000),
+                    new InputFrame(10U, new PlayerSlot(1), 0, 1, 3001),
+                });
+            FrameData authoritative = FrameData.Create(
+                roster,
+                10U,
+                new[]
+                {
+                    new InputFrame(10U, new PlayerSlot(1), 0, 1, 3001),
+                    new InputFrame(10U, new PlayerSlot(2), -1, 0, 3002),
+                    new InputFrame(10U, new PlayerSlot(0), 1, 0, 3000),
+                });
+            timeline.Predict(predicted);
+
+            bool dirty = timeline.ReconcileAuthoritative(authoritative);
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
+        }
+
+        private static void CleanReconcileRemovesOldestWithoutRecomputingPredictedState()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            FrameData frame10 = CreateNeutralFrame(roster, 10U);
+            timeline.Predict(frame10);
+            timeline.Predict(CreateNeutralFrame(roster, 11U));
+            BattleState predicted = timeline.PredictedState;
+
+            bool dirty = timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, 10U));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(11U, timeline.AuthoritativeState.Tick);
+            TestAssert.Same(predicted, timeline.PredictedState);
+            TestAssert.Equal(1, timeline.PendingPredictionCount);
+        }
+
+        private static void CleanReconcileRetainsLaterPredictionSnapshots()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateNeutralFrame(roster, 10U));
+            timeline.Predict(CreateNeutralFrame(roster, 11U));
+            timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, 10U));
+            BattleState predicted = timeline.PredictedState;
+
+            bool dirty = timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, 11U));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(12U, timeline.AuthoritativeState.Tick);
+            TestAssert.Same(predicted, timeline.PredictedState);
+            TestAssert.Equal(12U, timeline.PredictedState.Tick);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
         }
 
         private static ClientPredictionTimeline CreateTimeline(uint tick, int playerCount, int capacity)
