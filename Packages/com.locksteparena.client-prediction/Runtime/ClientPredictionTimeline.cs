@@ -136,8 +136,7 @@ namespace LockstepArena.Client.Prediction
 
             if (!FramesHaveSameValue(_history[0].PredictedFrame, authoritativeFrame))
             {
-                throw new InvalidOperationException(
-                    "Dirty reconciliation is added in the next implementation checkpoint.");
+                return ReconcileDirty(authoritativeFrame);
             }
 
             return ReconcileClean(authoritativeFrame);
@@ -193,6 +192,57 @@ namespace LockstepArena.Client.Prediction
             }
         }
 
+        private bool ReconcileDirty(FrameData authoritativeFrame)
+        {
+            try
+            {
+                PredictionRecord dirtyRecord = _history[0];
+                if (!StatesHaveSameValue(dirtyRecord.StateBefore, _authoritativeState))
+                {
+                    _faulted = true;
+                    throw new InvalidOperationException(
+                        "Dirty rollback state does not match the authoritative frontier.");
+                }
+
+                var authoritativeSimulation = new BattleSimulation(_authoritativeState);
+                authoritativeSimulation.Step(authoritativeFrame);
+                BattleState candidateAuthoritativeState = authoritativeSimulation.State;
+
+                var candidateHistory = new PredictionRecord[_history.Length - 1];
+                var predictedSimulation = new BattleSimulation(candidateAuthoritativeState);
+                for (int sourceIndex = 1; sourceIndex < _history.Length; sourceIndex++)
+                {
+                    FrameData retainedFrame = _history[sourceIndex].PredictedFrame;
+                    candidateHistory[sourceIndex - 1] =
+                        new PredictionRecord(predictedSimulation.State, retainedFrame);
+                    predictedSimulation.Step(retainedFrame);
+                }
+
+                BattleState candidatePredictedState = predictedSimulation.State;
+                if (candidatePredictedState.Tick != _predictedState.Tick)
+                {
+                    _faulted = true;
+                    throw new InvalidOperationException(
+                        "Dirty replay did not reconstruct the predicted frontier.");
+                }
+
+                EnsureInvariantOrFault(
+                    candidateAuthoritativeState,
+                    candidatePredictedState,
+                    candidateHistory);
+
+                _authoritativeState = candidateAuthoritativeState;
+                _predictedState = candidatePredictedState;
+                _history = candidateHistory;
+                return true;
+            }
+            catch
+            {
+                _faulted = true;
+                throw;
+            }
+        }
+
         private void ThrowIfFaulted()
         {
             if (_faulted)
@@ -218,6 +268,11 @@ namespace LockstepArena.Client.Prediction
             BattleState predictedState,
             PredictionRecord[] history)
         {
+            if (authoritativeState is null || predictedState is null || history is null)
+            {
+                return false;
+            }
+
             uint authoritativeTick = authoritativeState.Tick;
             uint predictedTick = predictedState.Tick;
             if (authoritativeTick > predictedTick ||
@@ -237,6 +292,11 @@ namespace LockstepArena.Client.Prediction
                 return authoritativeTick == predictedTick;
             }
 
+            if (history[0] is null)
+            {
+                return false;
+            }
+
             if (!StatesHaveSameValue(history[0].StateBefore, authoritativeState))
             {
                 return false;
@@ -250,7 +310,13 @@ namespace LockstepArena.Client.Prediction
                     return false;
                 }
 
-                uint expectedTick = checked(authoritativeTick + (uint)index);
+                ulong expectedTickWide = (ulong)authoritativeTick + (uint)index;
+                if (expectedTickWide > uint.MaxValue)
+                {
+                    return false;
+                }
+
+                uint expectedTick = (uint)expectedTickWide;
                 if (record.PredictedFrame.Tick != expectedTick ||
                     record.StateBefore.Tick != expectedTick ||
                     !authoritativeState.Roster.HasSameStructure(record.PredictedFrame.Roster) ||

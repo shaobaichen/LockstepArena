@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using LockstepArena.Simulation;
 
 namespace LockstepArena.Client.Prediction.Tests
@@ -29,6 +30,17 @@ namespace LockstepArena.Client.Prediction.Tests
             new TestCase("CanonicallyEqualFramesFromDifferentConstructionOrderAreClean", CanonicallyEqualFramesFromDifferentConstructionOrderAreClean),
             new TestCase("CleanReconcileRemovesOldestWithoutRecomputingPredictedState", CleanReconcileRemovesOldestWithoutRecomputingPredictedState),
             new TestCase("CleanReconcileRetainsLaterPredictionSnapshots", CleanReconcileRetainsLaterPredictionSnapshots),
+            new TestCase("MoveXDifferenceIsDirty", MoveXDifferenceIsDirty),
+            new TestCase("MoveZDifferenceIsDirty", MoveZDifferenceIsDirty),
+            new TestCase("AimDifferenceIsDirty", AimDifferenceIsDirty),
+            new TestCase("DifferentInputWithSameClampedStateIsDirty", DifferentInputWithSameClampedStateIsDirty),
+            new TestCase("EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames", EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames),
+            new TestCase("LatestPendingMismatchRollsBackWithoutLaterReplay", LatestPendingMismatchRollsBackWithoutLaterReplay),
+            new TestCase("DirtyReplayRebuildsRetainedSnapshots", DirtyReplayRebuildsRetainedSnapshots),
+            new TestCase("ImpossibleInternalInvariantEntersStickyFailStopWithoutPartialCommit", ImpossibleInternalInvariantEntersStickyFailStopWithoutPartialCommit),
+            new TestCase("StickyFaultRejectsBeforeArgumentValidation", StickyFaultRejectsBeforeArgumentValidation),
+            new TestCase("FinalAuthoritativeFrameDrainsTerminalPredictionWithoutWrap", FinalAuthoritativeFrameDrainsTerminalPredictionWithoutWrap),
+            new TestCase("AuthorityBeyondTerminalIsRejectedWithoutMutation", AuthorityBeyondTerminalIsRejectedWithoutMutation),
         };
 
         private static void ConstructorRejectsNullInitialState()
@@ -324,6 +336,178 @@ namespace LockstepArena.Client.Prediction.Tests
             TestAssert.Equal(0, timeline.PendingPredictionCount);
         }
 
+        private static void MoveXDifferenceIsDirty()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateFrame(roster, 10U, new sbyte[] { 1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 100, 200 }));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 10U, new sbyte[] { -1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 100, 200 }));
+
+            TestAssert.Equal(true, dirty);
+            AssertPlayer(timeline.AuthoritativeState, 0, -100, 0, 100);
+            AssertPlayer(timeline.PredictedState, 0, -100, 0, 100);
+        }
+
+        private static void MoveZDifferenceIsDirty()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateFrame(roster, 10U, new sbyte[] { 0, 0 }, new sbyte[] { 1, 0 }, new ushort[] { 100, 200 }));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 10U, new sbyte[] { 0, 0 }, new sbyte[] { -1, 0 }, new ushort[] { 100, 200 }));
+
+            TestAssert.Equal(true, dirty);
+            AssertPlayer(timeline.PredictedState, 0, 0, -100, 100);
+        }
+
+        private static void AimDifferenceIsDirty()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateFrame(roster, 10U, new sbyte[] { 0, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 111, 200 }));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 10U, new sbyte[] { 0, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 112, 200 }));
+
+            TestAssert.Equal(true, dirty);
+            AssertPlayer(timeline.PredictedState, 0, 0, 0, 112);
+        }
+
+        private static void DifferentInputWithSameClampedStateIsDirty()
+        {
+            ActiveRoster roster = CreateRoster(2);
+            var initial = new BattleState(
+                10U,
+                roster,
+                new[]
+                {
+                    new PlayerState(SimulationConfig.ArenaMaxX, 0, 10),
+                    new PlayerState(0, 0, 20),
+                });
+            var timeline = new ClientPredictionTimeline(initial, 4);
+            timeline.Predict(CreateFrame(roster, 10U, new sbyte[] { 1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 10, 20 }));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 10U, new sbyte[] { 0, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 10, 20 }));
+
+            TestAssert.Equal(true, dirty);
+            AssertPlayer(timeline.PredictedState, 0, SimulationConfig.ArenaMaxX, 0, 10);
+        }
+
+        private static void EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateFrame(roster, 10U, new sbyte[] { 1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 100, 200 }));
+            timeline.Predict(CreateFrame(roster, 11U, new sbyte[] { 0, 0 }, new sbyte[] { 1, 0 }, new ushort[] { 101, 201 }));
+            timeline.Predict(CreateFrame(roster, 12U, new sbyte[] { 1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 102, 202 }));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 10U, new sbyte[] { -1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 100, 200 }));
+
+            TestAssert.Equal(true, dirty);
+            TestAssert.Equal(11U, timeline.AuthoritativeState.Tick);
+            TestAssert.Equal(13U, timeline.PredictedState.Tick);
+            TestAssert.Equal(2, timeline.PendingPredictionCount);
+            AssertPlayer(timeline.PredictedState, 0, 0, 100, 102);
+        }
+
+        private static void LatestPendingMismatchRollsBackWithoutLaterReplay()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateNeutralFrame(roster, 10U));
+            timeline.Predict(CreateFrame(roster, 11U, new sbyte[] { 1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 101, 201 }));
+            timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, 10U));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 11U, new sbyte[] { -1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 101, 201 }));
+
+            TestAssert.Equal(true, dirty);
+            TestAssert.Equal(12U, timeline.AuthoritativeState.Tick);
+            TestAssert.Equal(12U, timeline.PredictedState.Tick);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
+            AssertPlayer(timeline.PredictedState, 0, -100, 0, 101);
+        }
+
+        private static void DirtyReplayRebuildsRetainedSnapshots()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateFrame(roster, 10U, new sbyte[] { 1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 100, 200 }));
+            FrameData frame11 = CreateFrame(roster, 11U, new sbyte[] { 0, 0 }, new sbyte[] { 1, 0 }, new ushort[] { 101, 201 });
+            timeline.Predict(frame11);
+            timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 10U, new sbyte[] { -1, 0 }, new sbyte[] { 0, 0 }, new ushort[] { 100, 200 }));
+
+            bool dirty = timeline.ReconcileAuthoritative(
+                CreateFrame(roster, 11U, new sbyte[] { 0, 0 }, new sbyte[] { 1, 0 }, new ushort[] { 101, 201 }));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(12U, timeline.AuthoritativeState.Tick);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
+            AssertPlayer(timeline.AuthoritativeState, 0, -100, 100, 101);
+        }
+
+        private static void ImpossibleInternalInvariantEntersStickyFailStopWithoutPartialCommit()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateNeutralFrame(roster, 10U));
+            BattleState authoritative = timeline.AuthoritativeState;
+            BattleState predicted = timeline.PredictedState;
+            CorruptPredictionHistory(timeline);
+
+            TestAssert.Throws<InvalidOperationException>(() => timeline.Predict(CreateNeutralFrame(roster, 11U)));
+
+            AssertUnchanged(timeline, authoritative, predicted, 1);
+        }
+
+        private static void StickyFaultRejectsBeforeArgumentValidation()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateNeutralFrame(roster, 10U));
+            BattleState authoritative = timeline.AuthoritativeState;
+            BattleState predicted = timeline.PredictedState;
+            CorruptPredictionHistory(timeline);
+            TestAssert.Throws<InvalidOperationException>(() => timeline.Predict(CreateNeutralFrame(roster, 11U)));
+
+            TestAssert.Throws<InvalidOperationException>(() => timeline.Predict(null!));
+            TestAssert.Throws<InvalidOperationException>(() => timeline.ReconcileAuthoritative(null!));
+            AssertUnchanged(timeline, authoritative, predicted, 1);
+            TestAssert.Equal(4, timeline.MaxPredictionTicks);
+        }
+
+        private static void FinalAuthoritativeFrameDrainsTerminalPredictionWithoutWrap()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(uint.MaxValue - 1U, 2, 2);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            timeline.Predict(CreateNeutralFrame(roster, uint.MaxValue - 1U));
+
+            bool dirty = timeline.ReconcileAuthoritative(CreateNeutralFrame(roster, uint.MaxValue - 1U));
+
+            TestAssert.Equal(false, dirty);
+            TestAssert.Equal(uint.MaxValue, timeline.AuthoritativeState.Tick);
+            TestAssert.Equal(uint.MaxValue, timeline.PredictedState.Tick);
+            TestAssert.Equal(0, timeline.PendingPredictionCount);
+        }
+
+        private static void AuthorityBeyondTerminalIsRejectedWithoutMutation()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(uint.MaxValue, 2, 2);
+            BattleState authoritative = timeline.AuthoritativeState;
+            BattleState predicted = timeline.PredictedState;
+
+            TestAssert.Throws<InvalidOperationException>(
+                () => timeline.ReconcileAuthoritative(CreateNeutralFrame(predicted.Roster, uint.MaxValue)));
+
+            AssertUnchanged(timeline, authoritative, predicted, 0);
+        }
+
         private static ClientPredictionTimeline CreateTimeline(uint tick, int playerCount, int capacity)
         {
             return new ClientPredictionTimeline(CreateState(tick, CreateRoster(playerCount)), capacity);
@@ -360,6 +544,59 @@ namespace LockstepArena.Client.Prediction.Tests
             }
 
             return FrameData.Create(roster, tick, inputs);
+        }
+
+        private static FrameData CreateFrame(
+            ActiveRoster roster,
+            uint tick,
+            sbyte[] moveX,
+            sbyte[] moveZ,
+            ushort[] aim)
+        {
+            var inputs = new InputFrame[roster.Count];
+            for (int index = 0; index < inputs.Length; index++)
+            {
+                inputs[index] = new InputFrame(
+                    tick,
+                    new PlayerSlot(index),
+                    moveX[index],
+                    moveZ[index],
+                    aim[index]);
+            }
+
+            return FrameData.Create(roster, tick, inputs);
+        }
+
+        private static void CorruptPredictionHistory(ClientPredictionTimeline timeline)
+        {
+            FieldInfo[] fields = typeof(ClientPredictionTimeline).GetFields(
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo? historyField = null;
+            for (int index = 0; index < fields.Length; index++)
+            {
+                Type fieldType = fields[index].FieldType;
+                Type? elementType = fieldType.GetElementType();
+                if (fieldType.IsArray &&
+                    elementType is not null &&
+                    elementType.GetProperty("StateBefore") is not null &&
+                    elementType.GetProperty("PredictedFrame") is not null)
+                {
+                    if (historyField is not null)
+                    {
+                        throw new InvalidOperationException("Expected one prediction-history field.");
+                    }
+
+                    historyField = fields[index];
+                }
+            }
+
+            if (historyField is null)
+            {
+                throw new InvalidOperationException("Prediction-history field was not found.");
+            }
+
+            Type recordType = historyField.FieldType.GetElementType()!;
+            historyField.SetValue(timeline, Array.CreateInstance(recordType, 1));
         }
 
         private static void AssertUnchanged(
