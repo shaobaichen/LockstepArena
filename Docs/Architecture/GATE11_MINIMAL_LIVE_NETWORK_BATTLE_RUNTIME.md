@@ -572,3 +572,126 @@ Login/Room/matchmaking/persistence, Unity Update/FixedUpdate integration,
 TLS/compression, DI/EventBus, recovery, or replacement authority timeline.
 
 Gate 11 ends after evidence and independent review. It does not begin Gate 12.
+
+## 18. Implementation Evidence
+
+Gate 11 was implemented and verified from the following frozen history:
+
+```text
+Frozen Gate 10 base  4b46f241fe2a98a84841264da7ee50720b425a08
+Planning foundation   0a06caf7f3fb5fb206e7c4766e160125dae096c6
+Approved Planning     2c282482d13ded8fb22f3fef5b44dc0c340fd7b2
+Task 1                5d0e338d881e7e45ca492cc6fae4a32201c0582f
+Task 2                21fd9381b412f4ad9a0c98e3c12021baa0a42ce8
+Task 3                2d76e3dfc6936a15c2eb07828e38075b24cf18bb
+Task 4 / evidence parent
+                      7baa8a94bdf585e093c7602620b16f37a3854370
+```
+
+### 18.1 Build and .NET execution evidence
+
+The restore-assets preflight found missing assets for five existing projects
+(Server Verification, Simulation Tests, FrameSync Tests, Protocol CodeGen,
+and TickAuthority Tests). Each was restored using its existing project
+contract, with no dependency or version change, and the complete build matrix
+was restarted from build 1.
+
+All 18 independent Release builds completed with zero warnings and zero
+errors. Fresh execution results were:
+
+```text
+Gate 3 Simulation                   RESULT 38/38 passed
+Gate 4 FrameSync                    RESULT 32/32 passed
+Gate 5 Protocol                     RESULT 35/35 passed
+Gate 6 ProtocolAuthority            RESULT 24/24 passed
+Gate 7 StreamFraming                RESULT 32/32 passed
+Gate 3 Server Golden                Tick=1000 Digest=89A7DD66F8D9E871
+Gate 9 TickAuthority                RESULT 27/27 passed
+Gate 10 TickPacing                  RESULT 27/27 passed
+Gate 8 real TCP, 30-second watchdog RESULT 8/8 passed
+Gate 11 live TCP, 60-second watchdog
+                                      RESULT 32/32 passed
+```
+
+The Gate 11 suite proved legacy/scheduled Processor isolation, one scheduled
+Publisher shared by Submit and Poll, stopped-Stopwatch deterministic maturity,
+pre-publication rejection versus sticky post-publication failure, and no
+partial payload return after a failing publication. It also proved one bounded
+Read per Pump, Submit outputs written before same-Pump Poll outputs, no write
+for zero authority output, deterministic EOF/fail-stop behavior, exactly one
+synchronous write per framed payload, and idempotent disposal.
+
+The live loopback Golden produced authoritative Tick100, Tick101, Tick102 in
+order. Server and authoritative-only Client both reached State103 with Digest
+`386C4BB11A7EB7E0`. Two independent real-TCP runs produced field-for-field
+equal authority sequences and final states. A separate mature-incomplete
+fixture sent no authority until the late Tick100 Slot3 input closed the gap.
+
+### 18.2 Protocol regeneration and Unity evidence
+
+Pinned Protocol regeneration used the existing Grpc.Tools contract with no
+`PROTOBUF_PROTOC` or `Protobuf_ProtocFullPath` override. It produced exactly
+the one tracked `LockstepArenaProtocol.g.cs`; Schema and Generated paths were
+diff-clean afterward.
+
+Three independent Unity 6000.3.10f1 EditMode runs used the frozen assembly
+filters, no `-quit`, and `Start-Process -Wait`. Each stale XML was deleted
+before its run, and pass status was established from newly generated NUnit XML
+rather than process exit code alone:
+
+```text
+LockstepArena.StreamFraming.Editor.Tests
+  total=1 passed=1 failed=0
+  UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden
+  result=Passed
+
+LockstepArena.Protocol.Editor.Tests
+  total=2 passed=2 failed=0
+  GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads
+  result=Passed
+  UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector
+  result=Passed
+
+LockstepArena.Simulation.Editor.Tests
+  filter=UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector
+  total=1 passed=1 failed=0
+  required named test result=Passed
+```
+
+Earlier attempts that ended during Unity Package Manager initialization
+produced no NUnit XML and were not used as passing evidence. The authorized
+retry retained the frozen `com.coplaydev.unity-mcp` URL/version/source and
+changed no manifest, lockfile, dependency, production source, or test source.
+After every accepted Unity run, exact worktree-local Assets/ProjectSettings
+serialization changes were inspected and only the individually confirmed
+paths were restored.
+
+### 18.3 Boundary and repository audits
+
+Relative to the frozen Gate 10 base, committed diff is zero for the four Gate
+4/9/10 FrameSync production files, Simulation, Protocol/schema/generated
+source, StreamFraming, Gate 8 TCP tests, all pre-existing tests, Assets,
+ProjectSettings, manifest, and packages-lock. The only modified existing
+production source is `ProtocolAuthorityProcessor.cs`; new production source is
+limited to the Server and Client LiveTcp directories.
+
+The final dependency audit found exactly 3/3/7 ProjectReferences in Server,
+Client, and Tests respectively. Client and Tests use the existing pinned
+Google.Protobuf 3.36.0 dependency; Client has no Server reference. The Gate 11
+test project contains exactly seven tracked files and exactly 32 registered
+tests. `.gitignore` adds only the three approved authored-csproj exceptions.
+
+Source and artifact audits found no KCP/UDP, background Thread, Task/async
+loop, Timer, retry/reconnect, missing-input replacement, prediction, snapshot,
+rollback, replay, router/envelope, DI/EventBus, production reflection or test
+injection hook. Reflection remains test-only, the Golden remains actual-only,
+and no new package, symlink/junction, copy/sync/cleanup script, tracked
+bin/obj, LockstepArena build DLL, or embedded-package build artifact exists.
+Both worktree and committed diffs passed `git diff --check`. The Gate 11
+worktree was clean before this evidence update, while the ordinary checkout
+still contained exactly its two protected user-owned modifications:
+
+```text
+Assets/Settings/Mobile_RPAsset.asset
+ProjectSettings/ShaderGraphSettings.asset
+```
