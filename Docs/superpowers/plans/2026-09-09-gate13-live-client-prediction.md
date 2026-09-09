@@ -316,6 +316,49 @@ Replay retains the immutable initial BattleState plus successfully reconciled au
 
 uint.MaxValue - 1 is the final consumable frame Tick; uint.MaxValue is terminal state Tick. No wrap, terminal prediction, or post-terminal authority is allowed.
 
+## Exact test-only reflection contracts
+
+Test 25 accesses the two frozen internal TcpClientBattlePump members from the separate Gate 13 test assembly through reflection only:
+
+~~~text
+BindingFlags.Static | BindingFlags.NonPublic
+CreateTransportOnly with the exact six-parameter signature
+
+BindingFlags.Instance | BindingFlags.NonPublic
+PumpReceiveTransportOnlyOnce with zero parameters
+~~~
+
+The fixture invokes those unique internal members and proves that the returned authoritative payload is mapped against expectedRoster, transport-only mode owns no persistent BattleSimulation, and the receive operation never calls BattleSimulation.Step. Test 24 separately proves the legacy public mode still owns and Steps its Simulation. Do not add InternalsVisibleTo, widen either member to public, add a production test hook, or create another test-helper file.
+
+Where exact authority maturity matters, Gate 13 shared-session and Golden tests use an independently implemented test-only reflection fixture in the already-approved Gate 13 test files. The fixture:
+
+~~~text
+locates the unique private ProtocolAuthorityProcessor in TcpSharedBattleSession by field type
+locates the unique private StopwatchTickDriver in that processor by field type
+locates the unique private Stopwatch and long baseline field in that driver by field type
+stops the Stopwatch
+captures stable Stopwatch.ElapsedTicks
+computes the elapsed ticks needed for the requested logical Advances with UInt128 and SimulationConfig.TickRate
+sets only the test driver's private baseline so the next PollAuthority performs that deterministic maturity
+~~~
+
+Use the same arithmetic principle already approved by Gate 11:
+
+~~~text
+requiredElapsed =
+ceil(Stopwatch.Frequency * dueAdvances / SimulationConfig.TickRate)
+~~~
+
+The helper is Gate 13 test code only and has this test-assembly-internal signature in TcpSharedBattleSessionTests.cs:
+
+~~~csharp
+internal static void ForceNextPollAdvances(
+    TcpSharedBattleSession session,
+    uint dueAdvances);
+~~~
+
+It must verify that every reflected field-type match is unique. Do not copy, link, or compile the Gate 11 helper source. Do not add a production clock hook, InternalsVisibleTo, public injection API, Task, Thread, async operation, Thread.Sleep correctness dependency, wall-clock busy-wait oracle, or second timing implementation. The external watchdog remains only a hung-process guard and is never the correctness clock.
+
 ## Frozen Golden data
 
 Correct Golden roster:
@@ -546,7 +589,7 @@ git commit -m "feat: add shared live battle session boundary"
 
 ### Step 1: Write Tests 14-23
 
-Add the exact real-client fan-in, anti-spoof, slot-order, Poll, broadcast, EOF, and sticky-fault tests.
+Add the exact real-client fan-in, anti-spoof, slot-order, Poll, broadcast, EOF, and sticky-fault tests. In TcpSharedBattleSessionTests.cs independently implement the frozen test-only ForceNextPollAdvances reflection fixture. Use it whenever an assertion requires an exact next-Poll logical maturity; do not wait for real elapsed wall-clock time.
 
 ### Step 2: Prove RED
 
@@ -594,7 +637,7 @@ git commit -m "feat: fan in and broadcast shared battle authority"
 
 ### Step 1: Write Tests 24-25
 
-Test the new internal transport-only creation/receive path and protect the legacy Gate 11 Simulation-stepping path.
+Test the new internal transport-only creation/receive path and protect the legacy Gate 11 Simulation-stepping path. Because the Gate 13 tests are a separate assembly, Test 25 must invoke the unique internal CreateTransportOnly and PumpReceiveTransportOnlyOnce members through test-only reflection with their exact frozen signatures. It must enumerate the transport-only pump's private instance fields and prove none has type BattleSimulation, while the returned mapped frame and unchanged state prove no Step occurred.
 
 ### Step 2: Prove RED
 
@@ -606,7 +649,7 @@ Expected: Test 25 fails because transport-only mapping without persistent Simula
 
 ### Step 3: Implement the minimum extraction
 
-Add the exact two internal members. Both modes reuse one private receive/decode/map path. Transport-only mode owns no Simulation and never calls Step. Add no public switch, interface, callback, or background loop.
+Add the exact two internal members. Both modes reuse one private receive/decode/map path. Transport-only mode owns no Simulation and never calls Step. Keep both new members internal; Test 25 reaches them only through reflection. Add no InternalsVisibleTo, public switch, public test hook, interface, callback, or background loop.
 
 ### Step 4: Prove GREEN
 
@@ -735,7 +778,7 @@ git commit -m "feat: retain bounded authoritative replay"
 
 ### Step 1: Write Tests 45-48 and finalize exact registry order
 
-The actual-only vector independently creates its roster, state, inputs, clients, shared session, predicted runtime, schedules, and actual results. It must not compile, link, or copy earlier test helpers or contain expected state/Digest/pass/fail values.
+The actual-only vector independently creates its roster, state, inputs, clients, shared session, predicted runtime, schedules, and actual results. It must not compile, link, or copy earlier test helpers or contain expected state/Digest/pass/fail values. Reuse the single Gate 13 test-only ForceNextPollAdvances fixture from TcpSharedBattleSessionTests.cs to arrange every exact server authority maturity in both Golden schedules.
 
 ### Step 2: Prove RED
 
@@ -747,7 +790,7 @@ Expected: Tests 45-48 fail because the real shared-session Golden is absent.
 
 ### Step 3: Implement the minimum Goldens
 
-Implement both frozen weak-network schedules with the same logical inputs and application-level withholding phases. Prove clean reconciliation, the exact Dirty sequence, bounded one-frame-per-Update catch-up in the wrong case, terminal no-wrap, identical authority/Replay/final state between schedules, and final authoritative/predicted/reconstructed Digest C3CAAFCE96D7F832.
+Implement both frozen weak-network schedules with the same logical inputs and application-level withholding phases. Stop and control only the reflected test Stopwatch/baseline before the relevant shared-session Polls; do not use Thread.Sleep, wall-clock maturity waits, or the external watchdog as a correctness oracle. Prove clean reconciliation, the exact Dirty sequence, bounded one-frame-per-Update catch-up in the wrong case, terminal no-wrap, identical authority/Replay/final state between schedules, and final authoritative/predicted/reconstructed Digest C3CAAFCE96D7F832.
 
 ### Step 4: Prove GREEN with an external watchdog
 
@@ -805,8 +848,8 @@ dotnet build Tests/LockstepArena.Server.ProtocolAuthority.Tests/LockstepArena.Se
 dotnet build Packages/com.locksteparena.stream-framing/Runtime/LockstepArena.StreamFraming.csproj -c Release --no-restore
 dotnet build Tests/LockstepArena.StreamFraming.Tests/LockstepArena.StreamFraming.Tests.csproj -c Release --no-restore
 dotnet build Tests/LockstepArena.TcpEndToEnd.Tests/LockstepArena.TcpEndToEnd.Tests.csproj -c Release --no-restore
-dotnet build Tests/LockstepArena.TickAuthority.Tests/LockstepArena.TickAuthority.Tests.csproj -c Release --no-restore
-dotnet build Tests/LockstepArena.TickPacing.Tests/LockstepArena.TickPacing.Tests.csproj -c Release --no-restore
+dotnet build Tests/LockstepArena.Server.TickAuthority.Tests/LockstepArena.Server.TickAuthority.Tests.csproj -c Release --no-restore
+dotnet build Tests/LockstepArena.Server.TickPacing.Tests/LockstepArena.Server.TickPacing.Tests.csproj -c Release --no-restore
 dotnet build Server/LockstepArena.Server.LiveTcp/LockstepArena.Server.LiveTcp.csproj -c Release --no-restore
 dotnet build Client/LockstepArena.Client.LiveTcp/LockstepArena.Client.LiveTcp.csproj -c Release --no-restore
 dotnet build Tests/LockstepArena.LiveTcp.Tests/LockstepArena.LiveTcp.Tests.csproj -c Release --no-restore
@@ -824,8 +867,8 @@ dotnet run --project Tests/LockstepArena.Server.Protocol.Tests/LockstepArena.Ser
 dotnet run --project Tests/LockstepArena.Server.ProtocolAuthority.Tests/LockstepArena.Server.ProtocolAuthority.Tests.csproj -c Release --no-build
 dotnet run --project Tests/LockstepArena.StreamFraming.Tests/LockstepArena.StreamFraming.Tests.csproj -c Release --no-build
 dotnet run --project Tests/LockstepArena.TcpEndToEnd.Tests/LockstepArena.TcpEndToEnd.Tests.csproj -c Release --no-build
-dotnet run --project Tests/LockstepArena.TickAuthority.Tests/LockstepArena.TickAuthority.Tests.csproj -c Release --no-build
-dotnet run --project Tests/LockstepArena.TickPacing.Tests/LockstepArena.TickPacing.Tests.csproj -c Release --no-build
+dotnet run --project Tests/LockstepArena.Server.TickAuthority.Tests/LockstepArena.Server.TickAuthority.Tests.csproj -c Release --no-build
+dotnet run --project Tests/LockstepArena.Server.TickPacing.Tests/LockstepArena.Server.TickPacing.Tests.csproj -c Release --no-build
 dotnet run --project Tests/LockstepArena.LiveTcp.Tests/LockstepArena.LiveTcp.Tests.csproj -c Release --no-build
 dotnet run --project Tests/LockstepArena.Client.Prediction.Tests/LockstepArena.Client.Prediction.Tests.csproj -c Release --no-build
 dotnet run --project Tests/LockstepArena.LivePrediction.Tests/LockstepArena.LivePrediction.Tests.csproj -c Release --no-build
