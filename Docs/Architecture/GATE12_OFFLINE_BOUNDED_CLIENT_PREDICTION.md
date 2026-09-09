@@ -840,3 +840,125 @@ time no package, implementation source, tests, `.gitignore`, lockfile, Unity
 configuration, or protected baseline file has changed. Final implementation
 evidence is appended only after a separately approved implementation and a
 fresh complete verification matrix.
+
+## 24. Final implementation evidence
+
+Fresh final verification was completed on 2026-09-09 from committed Task 4
+HEAD `fa654cee8a15e90292e87cc2c77e6757aa51b540` in the isolated
+`codex/gate12-client-prediction` worktree.
+
+The frozen Gate 11 baseline and implementation chain before this evidence-only
+commit are:
+
+```text
+03635526ffe53fcb384bf4b24887d34a942502bf  Gate 11 frozen baseline
+a7bb35e6b6e2bae54e499c46e3ba9ccbf97eaa61  docs: plan Gate 12 client prediction
+b70b5f15c317e64494c691750ba3c3cdc4c71de8  feat: add bounded client prediction
+7890585521448f9782b510cf1ea31c5f9a3d406d  feat: reconcile clean client predictions
+0a3436dccbbf6d0bf96927aa780ad57f76da8779  feat: rollback dirty client predictions
+fa654cee8a15e90292e87cc2c77e6757aa51b540  test: add client prediction golden vectors
+```
+
+The 20-project restore-assets preflight ended with all 20 assets present.
+Twelve missing assets were restored under their existing project contracts.
+An earlier restricted-network restore had left `NU1900` in the existing
+Protocol CodeGen asset; the same pinned CodeGen project was restored once with
+network access, without changing any dependency or version. The complete
+Release build sequence was then restarted from build 1 and produced:
+
+```text
+20/20 Release builds passed
+0 warnings
+0 errors
+```
+
+Fresh dependency-free .NET execution results were:
+
+```text
+Gate 3   RESULT 38/38 passed
+Gate 4   RESULT 32/32 passed
+Gate 5   RESULT 35/35 passed
+Gate 6   RESULT 24/24 passed
+Gate 7   RESULT 32/32 passed
+Gate 8   RESULT 8/8 passed (external 30-second watchdog)
+Gate 9   RESULT 27/27 passed
+Gate 10  RESULT 27/27 passed
+Gate 11  RESULT 32/32 passed (external 60-second watchdog)
+Gate 12  RESULT 36/36 passed
+```
+
+The verified deterministic values were:
+
+```text
+Gate 3 Server Golden                 89A7DD66F8D9E871
+Gate 11 authority sequence           Tick 100, 101, 102
+Gate 11 Server/Client final Tick     103
+Gate 11 final Digest                 386C4BB11A7EB7E0
+Gate 12 correct-prediction Digest    386C4BB11A7EB7E0
+Gate 12 wrong predicted State102     8506E4507001B972
+Gate 12 wrong predicted State103     7D0D3A230618500F
+Gate 12 corrected State102           A96B83267DD72A7D
+Gate 12 corrected final State103     386C4BB11A7EB7E0
+```
+
+Pinned Protocol regeneration ran with no `PROTOBUF_PROTOC` or
+`Protobuf_ProtocFullPath` override. Exactly one tracked generated source was
+present at
+`Packages/com.locksteparena.protocol/Runtime/Generated/LockstepArenaProtocol.g.cs`,
+and the Schema/Generated content diff was clean. A generator-created line-ending
+status marker had no content diff and was restored only for that exact tracked
+generated path.
+
+Four independent Unity 6000.3.10f1 EditMode regressions used
+`Start-Process -Wait`, omitted `-quit`, deleted stale XML first, and parsed
+fresh NUnit XML under `.artifacts/gate12-unity-final/`:
+
+```text
+Gate 12  total=2 passed=2 failed=0
+  UnityClientPredictionGoldenTests.UnityExecutesCorrectPredictionGolden Passed
+  UnityClientPredictionGoldenTests.UnityExecutesDirtyRollbackGolden Passed
+
+Gate 7   total=1 passed=1 failed=0
+  UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden Passed
+
+Gate 5   total=2 passed=2 failed=0
+  GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads Passed
+  UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector Passed
+
+Gate 3   total=1 passed=1 failed=0
+  UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector Passed
+```
+
+Each Unity run produced only the inspected worktree-local URP asset-version
+upgrade in `Assets/Settings/Mobile_RPAsset.asset`; that exact path was restored
+after every run. No broad reset or clean was used. The final runs did not need
+the temporary Unity Git proxy. Process-scoped `GIT_CONFIG_*` overrides are not
+set, and Git has no persistent proxy configuration.
+
+Repository and scope audits passed:
+
+- `.gitignore` adds exactly the two approved Prediction `.csproj` exceptions.
+- `packages-lock.json` adds exactly the embedded
+  `com.locksteparena.client-prediction` entry with its Simulation `0.1.0`
+  dependency; existing entries are unchanged.
+- `Packages/manifest.json` has zero committed diff.
+- Simulation, Protocol, StreamFraming, FrameSync, ProtocolAuthority,
+  Server/Client LiveTcp, existing Gate 3-11 tests, `Assets`, and
+  `ProjectSettings` have zero committed diff from the frozen Gate 11 baseline.
+- `TcpServerBattlePump.cs`, `TcpClientBattlePump.cs`, and
+  `ProtocolAuthorityProcessor.cs` are unchanged.
+- Prediction Runtime contains exactly one production C# source,
+  `ClientPredictionTimeline.cs`, and depends only on Simulation.
+- Exactly one physical `Gate12PredictionGoldenVector.cs` exists.
+- Production contains none of the prohibited Protocol, Protobuf, framing,
+  networking, timing, InputDelay, Replay, KCP/UDP, UnityEngine, or UnityEditor
+  dependencies.
+- Expected Digest literals occur in neither Prediction Runtime nor the
+  actual-only Golden vector.
+- The package contains no copied Simulation source, alternate Simulation,
+  generic rollback/snapshot/netcode framework, copy/sync script, symlink,
+  junction, `bin`, `obj`, or DLL.
+- The Gate 12 worktree was clean before this evidence-only edit. The ordinary
+  checkout retained exactly its two user-owned modifications:
+  `Assets/Settings/Mobile_RPAsset.asset` and
+  `ProjectSettings/ShaderGraphSettings.asset`.
