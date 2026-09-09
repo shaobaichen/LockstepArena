@@ -1,5 +1,9 @@
 using System;
+using System.IO;
 using System.Net.Sockets;
+using Google.Protobuf;
+using LockstepArena.Protocol;
+using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.ProtocolAuthority;
 using LockstepArena.Simulation;
 using LockstepArena.StreamFraming;
@@ -11,6 +15,7 @@ namespace LockstepArena.Server.LiveTcp
         private readonly ParticipantState[] _participants;
         private readonly ProtocolAuthorityProcessor _processor;
         private bool _disposed;
+        private bool _faulted;
 
         public TcpSharedBattleSession(
             BattleState initialState,
@@ -168,7 +173,75 @@ namespace LockstepArena.Server.LiveTcp
         public int PumpOnce()
         {
             ThrowIfDisposed();
-            return 0;
+            if (_faulted)
+            {
+                throw new InvalidOperationException("The shared TCP battle session is faulted.");
+            }
+
+            try
+            {
+                int published = 0;
+                for (int participantIndex = 0;
+                    participantIndex < _participants.Length;
+                    participantIndex++)
+                {
+                    ParticipantState participant = _participants[participantIndex];
+                    Socket socket = participant.Binding.ConnectedClient.Client;
+                    if (!socket.Poll(0, SelectMode.SelectRead))
+                    {
+                        continue;
+                    }
+
+                    if (socket.Available == 0)
+                    {
+                        throw new EndOfStreamException(
+                            "A participant stream ended before battle completion.");
+                    }
+
+                    int bytesRead = participant.Stream.Read(
+                        participant.ReceiveBuffer,
+                        participant.ReceiveOffset,
+                        participant.ReceiveReadCapacity);
+                    if (bytesRead == 0)
+                    {
+                        throw new EndOfStreamException(
+                            "A participant stream ended before battle completion.");
+                    }
+
+                    byte[][] payloads = participant.Decoder.Feed(
+                        participant.ReceiveBuffer,
+                        participant.ReceiveOffset,
+                        bytesRead);
+                    for (int payloadIndex = 0; payloadIndex < payloads.Length; payloadIndex++)
+                    {
+                        byte[] payload = payloads[payloadIndex];
+                        PlayerInputSubmissionMessage wire =
+                            PlayerInputSubmissionMessage.Parser.ParseFrom(payload);
+                        (PlayerId submittedPlayerId, InputFrame input) =
+                            ProtocolMapper.ToDomain(wire);
+                        if (submittedPlayerId != participant.Binding.PlayerId ||
+                            input.PlayerSlot != participant.Binding.PlayerSlot ||
+                            ServerState.Roster.GetPlayerId(participant.Binding.PlayerSlot) !=
+                                participant.Binding.PlayerId)
+                        {
+                            throw new ArgumentException(
+                                "Submission identity does not match the bound participant.");
+                        }
+
+                        published = checked(
+                            published + Broadcast(
+                                _processor.SubmitPlayerInputPayload(payload)));
+                    }
+                }
+
+                published = checked(published + Broadcast(_processor.PollAuthority()));
+                return published;
+            }
+            catch
+            {
+                _faulted = true;
+                throw;
+            }
         }
 
         public void Dispose()
@@ -191,6 +264,35 @@ namespace LockstepArena.Server.LiveTcp
             {
                 throw new ObjectDisposedException(nameof(TcpSharedBattleSession));
             }
+        }
+
+        private int Broadcast(byte[][] payloads)
+        {
+            if (payloads.Length == 0)
+            {
+                return 0;
+            }
+
+            var framed = new byte[payloads.Length][];
+            for (int index = 0; index < payloads.Length; index++)
+            {
+                framed[index] = LengthPrefixedFrameEncoder.Encode(
+                    payloads[index],
+                    _participants[0].MaxPayloadLength);
+            }
+
+            for (int frameIndex = 0; frameIndex < framed.Length; frameIndex++)
+            {
+                byte[] frame = framed[frameIndex];
+                for (int participantIndex = 0;
+                    participantIndex < _participants.Length;
+                    participantIndex++)
+                {
+                    _participants[participantIndex].Stream.Write(frame, 0, frame.Length);
+                }
+            }
+
+            return payloads.Length;
         }
 
         private sealed class ParticipantState : IDisposable
