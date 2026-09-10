@@ -43,5 +43,18 @@ namespace LockstepArena.Server.DemoHost
         {
             _events.Clear();
         }
+
+        internal bool TryDequeueEvent(out ServerControlEventMessage? message)
+        {
+            if (_events.Count == 0)
+            {
+                message = null;
+                return false;
+            }
+
+            message = _events[0];
+            _events.RemoveAt(0);
+            return true;
+        }
     }
 }

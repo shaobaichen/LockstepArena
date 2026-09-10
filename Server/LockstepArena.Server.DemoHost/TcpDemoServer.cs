@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using Google.Protobuf;
 using LockstepArena.Protocol;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Simulation;
+using LockstepArena.StreamFraming;
 
 namespace LockstepArena.Server.DemoHost
 {
@@ -14,6 +18,9 @@ namespace LockstepArena.Server.DemoHost
         private readonly DemoServerOptions _options;
         private readonly List<DemoSession> _sessions = new List<DemoSession>();
         private readonly List<DemoRoom> _rooms = new List<DemoRoom>();
+        private readonly TcpListener _controlListener;
+        private readonly TcpListener _battleListener;
+        private readonly List<ControlConnection> _controlConnections = new List<ControlConnection>();
         private ulong _nextSessionId = 1;
         private ulong _nextRoomId = 1;
         private ulong _nextBattleId = 1;
@@ -22,8 +29,24 @@ namespace LockstepArena.Server.DemoHost
         public TcpDemoServer(DemoServerOptions options)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
-            ControlPort = options.ControlPort;
-            BattlePort = options.BattlePort;
+            var controlListener = new TcpListener(IPAddress.Loopback, options.ControlPort);
+            var battleListener = new TcpListener(IPAddress.Loopback, options.BattlePort);
+            try
+            {
+                controlListener.Start();
+                battleListener.Start();
+            }
+            catch
+            {
+                controlListener.Stop();
+                battleListener.Stop();
+                throw;
+            }
+
+            _controlListener = controlListener;
+            _battleListener = battleListener;
+            ControlPort = ((IPEndPoint)controlListener.LocalEndpoint).Port;
+            BattlePort = ((IPEndPoint)battleListener.LocalEndpoint).Port;
         }
 
         public int ControlPort { get; }
@@ -34,7 +57,35 @@ namespace LockstepArena.Server.DemoHost
         public DemoServerPumpResult PumpOnce()
         {
             ThrowIfDisposed();
-            return new DemoServerPumpResult(0, 0, 0, 0, 0, 0);
+            int accepted = AcceptControlOnce();
+            int processed = 0;
+            ControlConnection[] connections = _controlConnections.ToArray();
+            for (int index = 0; index < connections.Length; index++)
+            {
+                ControlConnection connection = connections[index];
+                if (connection.Closed) continue;
+                try
+                {
+                    connection.PumpSend(_options.MaxControlSendBytesPerPump);
+                    if (connection.PumpRead())
+                    {
+                        int remaining = _options.MaxControlMessagesPerPump;
+                        while (remaining > 0 && connection.TryDequeuePayload(out byte[]? payload))
+                        {
+                            ProcessCommand(connection, payload!);
+                            processed++;
+                            remaining--;
+                        }
+                    }
+                }
+                catch
+                {
+                    CloseControl(connection);
+                }
+            }
+
+            DrainAllSessionEvents();
+            return new DemoServerPumpResult(accepted, 0, processed, 0, 0, 0);
         }
 
         internal DemoSession EnterSession(string nickname)
@@ -250,8 +301,121 @@ namespace LockstepArena.Server.DemoHost
         {
             if (_disposed) return;
             _disposed = true;
+            _controlListener.Stop();
+            _battleListener.Stop();
+            for (int index = 0; index < _controlConnections.Count; index++) _controlConnections[index].Dispose();
+            _controlConnections.Clear();
             _rooms.Clear();
             _sessions.Clear();
+        }
+
+        private int AcceptControlOnce()
+        {
+            if (_controlConnections.Count >= _options.MaxSessions || !_controlListener.Server.Poll(0, SelectMode.SelectRead)) return 0;
+            TcpClient client = _controlListener.AcceptTcpClient();
+            if (client.Client.AddressFamily != AddressFamily.InterNetwork)
+            {
+                client.Dispose();
+                return 0;
+            }
+
+            _controlConnections.Add(new ControlConnection(client, _options));
+            return 1;
+        }
+
+        private void ProcessCommand(ControlConnection connection, byte[] payload)
+        {
+            ClientControlCommandMessage command = ClientControlCommandMessage.Parser.ParseFrom(payload);
+            if (command.CommandCase == ClientControlCommandMessage.CommandOneofCase.None) throw new InvalidDataException("Control command union is missing.");
+            try
+            {
+                switch (command.CommandCase)
+                {
+                    case ClientControlCommandMessage.CommandOneofCase.EnterSession:
+                        if (connection.Session is not null) throw new InvalidOperationException("Session was already entered.");
+                        connection.Session = EnterSession(command.EnterSession.Nickname);
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.RequestRoomList:
+                        RequireNamed(connection).Queue(new ServerControlEventMessage { RoomList = CreateRoomList() });
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.CreateRoom:
+                        DemoSession creator = RequireNamed(connection);
+                        CreateRoom(creator.SessionId, command.CreateRoom.RoomName, checked((int)command.CreateRoom.Capacity));
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.JoinRoom:
+                        DemoSession joiner = RequireNamed(connection);
+                        JoinRoom(joiner.SessionId, command.JoinRoom.RoomId);
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.LeaveRoom:
+                        DemoSession leaver = RequireNamed(connection);
+                        LeaveRoom(leaver.SessionId);
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.SetReady:
+                        DemoSession ready = RequireNamed(connection);
+                        SetReady(ready.SessionId, command.SetReady.IsReady);
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.StartBattle:
+                        DemoSession starter = RequireNamed(connection);
+                        StartBattle(starter.SessionId);
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.ReturnToLobby:
+                        throw new InvalidOperationException("Return is only valid after settlement.");
+                    case ClientControlCommandMessage.CommandOneofCase.ExitSession:
+                        CloseControl(connection);
+                        break;
+                    default:
+                        throw new InvalidDataException("Unknown control command.");
+                }
+            }
+            catch (ArgumentException exception)
+            {
+                QueueRejection(connection, ControlRejectReasonMessage.ControlRejectReasonInvalidValue, exception.Message);
+            }
+            catch (InvalidOperationException exception)
+            {
+                QueueRejection(connection, ControlRejectReasonMessage.ControlRejectReasonInvalidPhase, exception.Message);
+            }
+        }
+
+        private void DrainAllSessionEvents()
+        {
+            for (int index = 0; index < _controlConnections.Count; index++)
+            {
+                ControlConnection connection = _controlConnections[index];
+                DemoSession? session = connection.Session;
+                if (connection.Closed || session is null) continue;
+                while (session.TryDequeueEvent(out ServerControlEventMessage? message)) connection.Queue(message!);
+            }
+        }
+
+        private void CloseControl(ControlConnection connection)
+        {
+            if (connection.Closed) return;
+            DemoSession? session = connection.Session;
+            connection.Dispose();
+            _controlConnections.Remove(connection);
+            if (session is not null && session.Phase != DemoSessionPhase.Closed) CloseSession(session.SessionId);
+        }
+
+        private static DemoSession RequireNamed(ControlConnection connection)
+        {
+            return connection.Session ?? throw new InvalidOperationException("Session entry is required.");
+        }
+
+        private RoomListEventMessage CreateRoomList()
+        {
+            var result = new RoomListEventMessage();
+            result.Rooms.Add(GetRoomSummaries());
+            return result;
+        }
+
+        private static void QueueRejection(ControlConnection connection, ControlRejectReasonMessage reason, string detail)
+        {
+            if (connection.Session is null) throw new InvalidDataException(detail);
+            connection.Session.Queue(new ServerControlEventMessage
+            {
+                CommandRejected = new CommandRejectedEventMessage { Reason = reason, Detail = detail },
+            });
         }
 
         private void RemoveOpenHostRoom(DemoRoom room, ulong hostSessionId)
@@ -351,6 +515,97 @@ namespace LockstepArena.Server.DemoHost
         private void ThrowIfDisposed()
         {
             if (_disposed) throw new ObjectDisposedException(nameof(TcpDemoServer));
+        }
+
+        private sealed class ControlConnection : IDisposable
+        {
+            private readonly TcpClient _client;
+            private readonly NetworkStream _stream;
+            private readonly LengthPrefixedFrameDecoder _decoder;
+            private readonly byte[] _receiveBuffer;
+            private readonly int _receiveOffset;
+            private readonly int _receiveCapacity;
+            private readonly int _maxPayloadLength;
+            private readonly int _maxPendingBytes;
+            private readonly Queue<byte[]> _incoming = new Queue<byte[]>();
+            private readonly Queue<byte[]> _outgoing = new Queue<byte[]>();
+            private byte[]? _sending;
+            private int _sendOffset;
+            private int _pendingBytes;
+
+            internal ControlConnection(TcpClient client, DemoServerOptions options)
+            {
+                _client = client;
+                _stream = client.GetStream();
+                _decoder = new LengthPrefixedFrameDecoder(options.MaxControlPayloadLength);
+                _receiveBuffer = new byte[options.ControlReceiveBufferLength];
+                _receiveOffset = options.ControlReceiveOffset;
+                _receiveCapacity = options.ControlReceiveReadCapacity;
+                _maxPayloadLength = options.MaxControlPayloadLength;
+                _maxPendingBytes = options.MaxPendingControlBytesPerSession;
+            }
+
+            internal DemoSession? Session { get; set; }
+            internal bool Closed { get; private set; }
+
+            internal void PumpSend(int maximumBytes)
+            {
+                if (!_client.Client.Poll(0, SelectMode.SelectWrite)) return;
+                if (_sending is null)
+                {
+                    if (_outgoing.Count == 0) return;
+                    _sending = _outgoing.Dequeue();
+                    _sendOffset = 0;
+                }
+
+                int count = Math.Min(maximumBytes, _sending.Length - _sendOffset);
+                _stream.Write(_sending, _sendOffset, count);
+                _sendOffset += count;
+                _pendingBytes -= count;
+                if (_sendOffset == _sending.Length)
+                {
+                    _sending = null;
+                    _sendOffset = 0;
+                }
+            }
+
+            internal bool PumpRead()
+            {
+                if (!_client.Client.Poll(0, SelectMode.SelectRead)) return false;
+                if (_client.Client.Available == 0) throw new EndOfStreamException("Control connection ended.");
+                int read = _stream.Read(_receiveBuffer, _receiveOffset, _receiveCapacity);
+                if (read == 0) throw new EndOfStreamException("Control connection ended.");
+                byte[][] payloads = _decoder.Feed(_receiveBuffer, _receiveOffset, read);
+                for (int index = 0; index < payloads.Length; index++) _incoming.Enqueue(payloads[index]);
+                return true;
+            }
+
+            internal bool TryDequeuePayload(out byte[]? payload)
+            {
+                if (_incoming.Count == 0)
+                {
+                    payload = null;
+                    return false;
+                }
+                payload = _incoming.Dequeue();
+                return true;
+            }
+
+            internal void Queue(ServerControlEventMessage message)
+            {
+                byte[] framed = LengthPrefixedFrameEncoder.Encode(message.ToByteArray(), _maxPayloadLength);
+                if ((long)_pendingBytes + framed.Length > _maxPendingBytes) throw new InvalidOperationException("Pending control send capacity is full.");
+                _outgoing.Enqueue(framed);
+                _pendingBytes += framed.Length;
+            }
+
+            public void Dispose()
+            {
+                if (Closed) return;
+                Closed = true;
+                try { _stream.Dispose(); }
+                finally { _client.Dispose(); }
+            }
         }
     }
 }

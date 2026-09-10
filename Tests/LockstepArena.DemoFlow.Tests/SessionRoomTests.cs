@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using LockstepArena.Client.Demo;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.DemoHost;
 using LockstepArena.Simulation;
@@ -35,6 +36,52 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.Equal((ulong)2, lower.SessionId);
             TestAssert.Throws<ArgumentException>(() => server.EnterSession("bad\nname"));
             TestAssert.Throws<ArgumentOutOfRangeException>(() => server.EnterSession(new string('\u754c', 11)));
+            ControlEntryUsesBoundedPumpAndConfirmedEvent();
+        }
+
+        private static void ControlEntryUsesBoundedPumpAndConfirmedEvent()
+        {
+            using var server = CreateServer();
+            using var client = new TcpDemoClient(new DemoClientOptions(server.ControlPort, 1024, 2048, 32, 3, 8, 4, 64, 4, 4, 8, 16, 1024, 32, 3, 8));
+            client.BeginConnect();
+            client.EnterSession("NetworkAlpha");
+            TestAssert.Equal(DemoClientPhase.AwaitingSessionEntry, client.Phase);
+            for (int index = 0; index < 200 && client.Phase != DemoClientPhase.Lobby; index++)
+            {
+                server.PumpOnce();
+                client.PumpOnce(null);
+            }
+
+            TestAssert.Equal(DemoClientPhase.Lobby, client.Phase);
+            TestAssert.Equal("NetworkAlpha", client.Snapshot.Nickname);
+            TestAssert.True(client.Snapshot.SessionId > 0);
+
+            client.CreateRoom("Network Room", 2);
+            PumpUntil(server, client, DemoClientPhase.Room);
+            client.StartBattle();
+            client.PumpOnce(null);
+            TestAssert.Equal(DemoClientPhase.Room, client.Phase);
+            for (int index = 0; index < 200 && client.Snapshot.LastRejection.Length == 0; index++)
+            {
+                server.PumpOnce();
+                client.PumpOnce(null);
+            }
+            TestAssert.Equal(DemoClientPhase.Room, client.Phase);
+            TestAssert.True(client.Snapshot.LastRejection.Length > 0);
+
+            client.LeaveRoom();
+            TestAssert.Equal(DemoClientPhase.Room, client.Phase);
+            PumpUntil(server, client, DemoClientPhase.Lobby);
+        }
+
+        private static void PumpUntil(TcpDemoServer server, TcpDemoClient client, DemoClientPhase phase)
+        {
+            for (int index = 0; index < 400 && client.Phase != phase; index++)
+            {
+                server.PumpOnce();
+                client.PumpOnce(null);
+            }
+            TestAssert.Equal(phase, client.Phase);
         }
 
         private static void RoomNameValidationUsesTrimControlAndUtf8Rules()

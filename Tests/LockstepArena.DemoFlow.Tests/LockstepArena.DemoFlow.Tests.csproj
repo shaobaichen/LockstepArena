@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Server\LockstepArena.Server.DemoHost\LockstepArena.Server.DemoHost.csproj" />
+    <ProjectReference Include="..\..\Packages\com.locksteparena.client-demo\Runtime\LockstepArena.Client.Demo.csproj" />
     <ProjectReference Include="..\..\Packages\com.locksteparena.protocol\Runtime\LockstepArena.Protocol.csproj" />
     <ProjectReference Include="..\..\Packages\com.locksteparena.simulation\Runtime\LockstepArena.Simulation.csproj" />
   </ItemGroup>
