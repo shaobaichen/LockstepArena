@@ -179,6 +179,157 @@ namespace LockstepArena.Protocol
             }
         }
 
+        public static BattleBootstrapMessage ToWireBattleBootstrap(
+            ulong battleId,
+            BattleState initialState,
+            uint battleDurationTicks,
+            uint inputDelayTicks,
+            uint finalStateTick)
+        {
+            if (battleId == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(battleId));
+            }
+
+            if (initialState is null)
+            {
+                throw new ArgumentNullException(nameof(initialState));
+            }
+
+            if (battleDurationTicks == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(battleDurationTicks));
+            }
+
+            ulong calculatedFinalTick = (ulong)initialState.Tick + battleDurationTicks;
+            if (calculatedFinalTick > uint.MaxValue || finalStateTick != (uint)calculatedFinalTick)
+            {
+                throw new ArgumentOutOfRangeException(nameof(finalStateTick));
+            }
+
+            var wire = new BattleBootstrapMessage
+            {
+                BattleId = battleId,
+                Roster = ToWire(initialState.Roster),
+                InitialTick = initialState.Tick,
+                BattleDurationTicks = battleDurationTicks,
+                InputDelayTicks = inputDelayTicks,
+                FinalStateTick = finalStateTick,
+            };
+            for (int index = 0; index < initialState.PlayerCount; index++)
+            {
+                PlayerState state = initialState.GetPlayerState(new PlayerSlot(index));
+                wire.PlayerStates.Add(new InitialPlayerStateMessage
+                {
+                    PlayerSlot = checked((uint)index),
+                    PositionX = state.PositionX,
+                    PositionZ = state.PositionZ,
+                    Aim = state.Aim,
+                });
+            }
+
+            return wire;
+        }
+
+        public static BattleState ToDomainBattleBootstrap(
+            BattleBootstrapMessage wire,
+            PlayerId localPlayerId,
+            PlayerSlot localPlayerSlot)
+        {
+            if (wire is null)
+            {
+                throw new ArgumentNullException(nameof(wire));
+            }
+
+            if (wire.BattleId == 0)
+            {
+                throw new ProtocolMappingException("Battle bootstrap must contain a nonzero BattleId.");
+            }
+
+            if (wire.Roster is null)
+            {
+                throw new ProtocolMappingException("Battle bootstrap must contain a roster.");
+            }
+
+            ActiveRoster roster = ToDomain(wire.Roster);
+            if (localPlayerSlot.Value >= roster.Count || roster.GetPlayerId(localPlayerSlot) != localPlayerId)
+            {
+                throw new ProtocolMappingException("Local identity does not match the bootstrap roster slot.");
+            }
+
+            if (wire.BattleDurationTicks == 0)
+            {
+                throw new ProtocolMappingException("Battle duration must be positive.");
+            }
+
+            ulong calculatedFinalTick = (ulong)wire.InitialTick + wire.BattleDurationTicks;
+            if (calculatedFinalTick > uint.MaxValue || wire.FinalStateTick != (uint)calculatedFinalTick)
+            {
+                throw new ProtocolMappingException("Battle bootstrap Tick arithmetic is invalid.");
+            }
+
+            if (wire.PlayerStates.Count != roster.Count)
+            {
+                throw new ProtocolMappingException("Battle bootstrap state count must match the roster.");
+            }
+
+            var states = new PlayerState[roster.Count];
+            var present = new bool[roster.Count];
+            for (int index = 0; index < wire.PlayerStates.Count; index++)
+            {
+                InitialPlayerStateMessage state = wire.PlayerStates[index];
+                if (state is null)
+                {
+                    throw new ProtocolMappingException("Battle bootstrap cannot contain a null player state.");
+                }
+
+                int slot = ToSlotValue(state.PlayerSlot, "Battle bootstrap player slot");
+                if (slot >= roster.Count)
+                {
+                    throw new ProtocolMappingException("Battle bootstrap player slot is outside the roster.");
+                }
+
+                if (present[slot])
+                {
+                    throw new ProtocolMappingException("Battle bootstrap contains a duplicate player slot.");
+                }
+
+                if (state.PositionX < SimulationConfig.ArenaMinX || state.PositionX > SimulationConfig.ArenaMaxX ||
+                    state.PositionZ < SimulationConfig.ArenaMinZ || state.PositionZ > SimulationConfig.ArenaMaxZ)
+                {
+                    throw new ProtocolMappingException("Battle bootstrap position is outside the Simulation arena.");
+                }
+
+                if (state.Aim > ushort.MaxValue)
+                {
+                    throw new ProtocolMappingException("Battle bootstrap aim exceeds the Domain ushort range.");
+                }
+
+                states[slot] = new PlayerState(
+                    state.PositionX,
+                    state.PositionZ,
+                    checked((ushort)state.Aim));
+                present[slot] = true;
+            }
+
+            for (int index = 0; index < present.Length; index++)
+            {
+                if (!present[index])
+                {
+                    throw new ProtocolMappingException("Battle bootstrap player-state slots must be contiguous.");
+                }
+            }
+
+            try
+            {
+                return new BattleState(wire.InitialTick, roster, states);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ProtocolMappingException("Battle bootstrap violates the Simulation state contract.", exception);
+            }
+        }
+
         private static InputFrameMessage ToWire(InputFrame input)
         {
             return new InputFrameMessage

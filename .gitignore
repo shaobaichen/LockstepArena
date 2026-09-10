@@ -81,6 +81,7 @@ ExportedObj/
 !Packages/com.locksteparena.client-prediction/Runtime/LockstepArena.Client.Prediction.csproj
 !Tests/LockstepArena.Client.Prediction.Tests/LockstepArena.Client.Prediction.Tests.csproj
 !Tests/LockstepArena.LivePrediction.Tests/LockstepArena.LivePrediction.Tests.csproj
+!Tests/LockstepArena.DemoFlow.Tests/LockstepArena.DemoFlow.Tests.csproj
 [Bb]in/
 [Oo]bj/
 /.artifacts/
