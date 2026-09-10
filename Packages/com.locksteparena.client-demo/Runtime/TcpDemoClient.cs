@@ -5,7 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using Google.Protobuf;
 using LockstepArena.Client.LiveTcp;
+using LockstepArena.Protocol;
 using LockstepArena.Protocol.Wire;
+using LockstepArena.Simulation;
 using LockstepArena.StreamFraming;
 
 namespace LockstepArena.Client.Demo
@@ -29,6 +31,14 @@ namespace LockstepArena.Client.Demo
         private string _roomName = string.Empty;
         private ulong _battleId;
         private string _lastRejection = string.Empty;
+        private BattlePreparingEventMessage? _preparing;
+        private BattleState? _battleInitialState;
+        private TcpClient? _battleClient;
+        private NetworkStream? _battleStream;
+        private int _ticketSendOffset;
+        private bool _battleAccepted;
+        private bool _battleStarted;
+        private PredictedTcpClientBattleRuntime? _battleRuntime;
         private bool _disposed;
 
         public TcpDemoClient(DemoClientOptions options)
@@ -124,7 +134,16 @@ namespace LockstepArena.Client.Demo
             {
                 int sent = PumpSend();
                 int processed = PumpReceive();
-                return new DemoClientPumpResult(sent, processed, 0, false);
+                ProgressBattleAttachment();
+                int authority = 0;
+                bool prediction = false;
+                if (_battleRuntime is not null && _phase == DemoClientPhase.InBattle)
+                {
+                    PredictedClientUpdateResult result = _battleRuntime.Update(localInput);
+                    authority = result.ReconciledAuthoritativeFrameCount;
+                    prediction = result.LocalPredictionSent;
+                }
+                return new DemoClientPumpResult(sent, processed, authority, prediction);
             }
             catch
             {
@@ -138,8 +157,20 @@ namespace LockstepArena.Client.Demo
             if (_disposed) return;
             _disposed = true;
             _phase = DemoClientPhase.Disposed;
-            try { _stream?.Dispose(); }
-            finally { _client?.Dispose(); }
+            try
+            {
+                if (_battleRuntime is not null) _battleRuntime.Dispose();
+                else
+                {
+                    _battleStream?.Dispose();
+                    _battleClient?.Dispose();
+                }
+            }
+            finally
+            {
+                try { _stream?.Dispose(); }
+                finally { _client?.Dispose(); }
+            }
         }
 
         private void Queue(ClientControlCommandMessage command)
@@ -209,12 +240,13 @@ namespace LockstepArena.Client.Demo
                     _phase = DemoClientPhase.Room;
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattlePreparing:
-                    _battleId = message.BattlePreparing.BattleId;
+                    BeginBattleAttachment(message.BattlePreparing);
                     _phase = DemoClientPhase.PreparingBattle;
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattleStarted:
                     if (message.BattleStarted.BattleId != _battleId) throw new InvalidDataException("BattleStarted does not match the prepared battle.");
-                    _phase = DemoClientPhase.InBattle;
+                    _battleStarted = true;
+                    TryActivateBattleRuntime();
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattleSettlement:
                     if (message.BattleSettlement.BattleId != _battleId) throw new InvalidDataException("Settlement does not match the active battle.");
@@ -235,6 +267,72 @@ namespace LockstepArena.Client.Demo
                 default:
                     throw new InvalidDataException("Control event union is missing.");
             }
+        }
+
+        private void BeginBattleAttachment(BattlePreparingEventMessage preparing)
+        {
+            if (preparing is null || preparing.Bootstrap is null) throw new InvalidDataException("Battle preparation is incomplete.");
+            if (preparing.BattleId == 0 || preparing.BattleId != preparing.Bootstrap.BattleId) throw new InvalidDataException("Battle preparation identity is invalid.");
+            if (preparing.BattleTicket.Length != 16) throw new InvalidDataException("Battle ticket must contain exactly 16 bytes.");
+            if (preparing.BattlePort == 0 || preparing.BattlePort > ushort.MaxValue) throw new InvalidDataException("Battle port is outside the TCP port range.");
+            if (preparing.LocalPlayerSlot > int.MaxValue) throw new InvalidDataException("Local player slot exceeds the Domain range.");
+            var localId = new PlayerId(preparing.LocalPlayerId);
+            var localSlot = new PlayerSlot(checked((int)preparing.LocalPlayerSlot));
+            BattleState initialState = ProtocolMapper.ToDomainBattleBootstrap(preparing.Bootstrap, localId, localSlot);
+            var battleClient = new TcpClient(AddressFamily.InterNetwork);
+            try
+            {
+                battleClient.Connect(IPAddress.Loopback, checked((int)preparing.BattlePort));
+                _battleClient = battleClient;
+                _battleStream = battleClient.GetStream();
+            }
+            catch
+            {
+                battleClient.Dispose();
+                throw;
+            }
+            _preparing = preparing.Clone();
+            _battleInitialState = initialState;
+            _battleId = preparing.BattleId;
+            _ticketSendOffset = 0;
+            _battleAccepted = false;
+            _battleStarted = false;
+        }
+
+        private void ProgressBattleAttachment()
+        {
+            if (_battleClient is null || _battleStream is null || _preparing is null || _battleRuntime is not null) return;
+            if (_ticketSendOffset < 16)
+            {
+                if (!_battleClient.Client.Poll(0, SelectMode.SelectWrite)) return;
+                byte[] ticket = _preparing.BattleTicket.ToByteArray();
+                int sent = _battleClient.Client.Send(ticket, _ticketSendOffset, ticket.Length - _ticketSendOffset, SocketFlags.None);
+                if (sent <= 0) throw new EndOfStreamException("Battle ticket send ended early.");
+                _ticketSendOffset += sent;
+                return;
+            }
+            if (!_battleAccepted && _battleClient.Client.Poll(0, SelectMode.SelectRead))
+            {
+                if (_battleClient.Client.Available == 0) throw new EndOfStreamException("Battle attachment ended before acceptance.");
+                int value = _battleStream.ReadByte();
+                if (value != 0x01) throw new InvalidDataException("Battle attachment acceptance byte is invalid.");
+                _battleAccepted = true;
+                TryActivateBattleRuntime();
+            }
+        }
+
+        private void TryActivateBattleRuntime()
+        {
+            if (!_battleAccepted || !_battleStarted || _battleRuntime is not null) return;
+            TcpClient client = _battleClient ?? throw new InvalidOperationException("Battle client is missing.");
+            BattlePreparingEventMessage preparing = _preparing ?? throw new InvalidOperationException("Battle preparation is missing.");
+            BattleState initialState = _battleInitialState ?? throw new InvalidOperationException("Battle initial state is missing.");
+            var localId = new PlayerId(preparing.LocalPlayerId);
+            var localSlot = new PlayerSlot(checked((int)preparing.LocalPlayerSlot));
+            _battleRuntime = new PredictedTcpClientBattleRuntime(client, initialState, localId, localSlot, _options.MaxPredictionTicks, _options.MaxAuthoritativeFramesPerUpdate, _options.MaxPendingAuthoritativeFrames, _options.MaxReplayFrames, _options.MaxBattlePayloadLength, _options.BattleReceiveBufferLength, _options.BattleReceiveOffset, _options.BattleReceiveReadCapacity);
+            _battleClient = null;
+            _battleStream = null;
+            _phase = DemoClientPhase.InBattle;
         }
 
         private void RequirePhase(DemoClientPhase phase)

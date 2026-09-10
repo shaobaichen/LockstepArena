@@ -6,7 +6,7 @@ namespace LockstepArena.DemoFlow.Tests
     {
         private static int Main()
         {
-            TestCase[] tests = Combine(ControlProtocolTests.All, SessionRoomTests.All, BattlePreparationTests.All);
+            TestCase[] tests = Combine(ControlProtocolTests.All, SessionRoomTests.All, BattlePreparationTests.All, SettlementLifecycleTests.All);
             int failures = 0;
             foreach (TestCase test in tests)
             {

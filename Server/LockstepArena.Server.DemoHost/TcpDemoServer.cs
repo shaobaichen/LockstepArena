@@ -21,6 +21,7 @@ namespace LockstepArena.Server.DemoHost
         private readonly TcpListener _controlListener;
         private readonly TcpListener _battleListener;
         private readonly List<ControlConnection> _controlConnections = new List<ControlConnection>();
+        private readonly List<BattleAttachment> _battleAttachments = new List<BattleAttachment>();
         private ulong _nextSessionId = 1;
         private ulong _nextRoomId = 1;
         private ulong _nextBattleId = 1;
@@ -58,6 +59,7 @@ namespace LockstepArena.Server.DemoHost
         {
             ThrowIfDisposed();
             int accepted = AcceptControlOnce();
+            int acceptedBattle = AcceptBattleOnce();
             int processed = 0;
             ControlConnection[] connections = _controlConnections.ToArray();
             for (int index = 0; index < connections.Length; index++)
@@ -85,7 +87,10 @@ namespace LockstepArena.Server.DemoHost
             }
 
             DrainAllSessionEvents();
-            return new DemoServerPumpResult(accepted, 0, processed, 0, 0, 0);
+            ProgressBattleAttachments();
+            int published = PumpBattles(out int aborted);
+            DrainAllSessionEvents();
+            return new DemoServerPumpResult(accepted, acceptedBattle, processed, published, 0, aborted);
         }
 
         internal DemoSession EnterSession(string nickname)
@@ -281,7 +286,11 @@ namespace LockstepArena.Server.DemoHost
         {
             ThrowIfDisposed();
             DemoSession session = GetSession(sessionId);
-            if (session.Phase == DemoSessionPhase.InRoom)
+            if (session.Phase == DemoSessionPhase.PreparingBattle || session.Phase == DemoSessionPhase.InBattle)
+            {
+                AbortRoom(GetRoom(session.RoomId), "A participant control connection ended.");
+            }
+            else if (session.Phase == DemoSessionPhase.InRoom)
             {
                 DemoRoom room = GetRoom(session.RoomId);
                 if (room.Lifecycle == DemoRoomLifecycle.Open && room.HostSessionId == sessionId) RemoveOpenHostRoom(room, sessionId);
@@ -305,6 +314,9 @@ namespace LockstepArena.Server.DemoHost
             _battleListener.Stop();
             for (int index = 0; index < _controlConnections.Count; index++) _controlConnections[index].Dispose();
             _controlConnections.Clear();
+            for (int index = 0; index < _battleAttachments.Count; index++) _battleAttachments[index].Dispose();
+            _battleAttachments.Clear();
+            for (int index = 0; index < _rooms.Count; index++) _rooms[index].Preparation?.Invalidate();
             _rooms.Clear();
             _sessions.Clear();
         }
@@ -321,6 +333,135 @@ namespace LockstepArena.Server.DemoHost
 
             _controlConnections.Add(new ControlConnection(client, _options));
             return 1;
+        }
+
+        private int AcceptBattleOnce()
+        {
+            if (!_battleListener.Server.Poll(0, SelectMode.SelectRead)) return 0;
+            TcpClient client = _battleListener.AcceptTcpClient();
+            if (client.Client.AddressFamily != AddressFamily.InterNetwork)
+            {
+                client.Dispose();
+                return 0;
+            }
+
+            _battleAttachments.Add(new BattleAttachment(client));
+            return 1;
+        }
+
+        private void ProgressBattleAttachments()
+        {
+            BattleAttachment[] attachments = _battleAttachments.ToArray();
+            for (int index = 0; index < attachments.Length; index++)
+            {
+                BattleAttachment attachment = attachments[index];
+                if (attachment.Closed) continue;
+                try
+                {
+                    if (!attachment.Progress(this)) continue;
+                    _battleAttachments.Remove(attachment);
+                    BattlePreparation preparation = attachment.Preparation!;
+                    preparation.CommitAttachment(attachment.Slot, attachment.DetachClient());
+                    if (preparation.AttachedCount == preparation.ParticipantCount)
+                    {
+                        preparation.Activate(_options);
+                        DemoRoom room = GetRoomForPreparation(preparation);
+                        room.Lifecycle = DemoRoomLifecycle.InBattle;
+                        DemoSession[] participants = room.CopyParticipants();
+                        for (int participantIndex = 0; participantIndex < participants.Length; participantIndex++)
+                        {
+                            participants[participantIndex].Phase = DemoSessionPhase.InBattle;
+                            participants[participantIndex].Queue(new ServerControlEventMessage
+                            {
+                                BattleStarted = new BattleStartedEventMessage { BattleId = preparation.BattleId },
+                            });
+                        }
+                    }
+                }
+                catch
+                {
+                    attachment.ReleaseReservation();
+                    attachment.Dispose();
+                    _battleAttachments.Remove(attachment);
+                }
+            }
+        }
+
+        private int PumpBattles(out int aborted)
+        {
+            int published = 0;
+            aborted = 0;
+            DemoRoom[] rooms = _rooms.ToArray();
+            for (int index = 0; index < rooms.Length; index++)
+            {
+                DemoRoom room = rooms[index];
+                if (room.Lifecycle != DemoRoomLifecycle.InBattle || room.Preparation?.SharedSession is null) continue;
+                try
+                {
+                    published = checked(published + room.Preparation.SharedSession.PumpOnce());
+                }
+                catch
+                {
+                    AbortRoom(room, "Battle session failed.");
+                    aborted++;
+                }
+            }
+            return published;
+        }
+
+        private bool TryReserveTicket(byte[] ticket, out BattlePreparation? preparation, out PlayerSlot slot)
+        {
+            for (int index = 0; index < _rooms.Count; index++)
+            {
+                BattlePreparation? candidate = _rooms[index].Preparation;
+                if (candidate is not null && candidate.TryReserveTicket(ticket, out slot))
+                {
+                    preparation = candidate;
+                    return true;
+                }
+            }
+            preparation = null;
+            slot = default;
+            return false;
+        }
+
+        private DemoRoom GetRoomForPreparation(BattlePreparation preparation)
+        {
+            for (int index = 0; index < _rooms.Count; index++) if (ReferenceEquals(_rooms[index].Preparation, preparation)) return _rooms[index];
+            throw new InvalidOperationException("Preparation no longer belongs to an active room.");
+        }
+
+        private void AbortRoom(DemoRoom room, string detail)
+        {
+            BattlePreparation? preparation = room.Preparation;
+            preparation?.Invalidate();
+            for (int index = _battleAttachments.Count - 1; index >= 0; index--)
+            {
+                if (ReferenceEquals(_battleAttachments[index].Preparation, preparation))
+                {
+                    _battleAttachments[index].Dispose();
+                    _battleAttachments.RemoveAt(index);
+                }
+            }
+
+            DemoSession[] participants = room.CopyParticipants();
+            room.Lifecycle = DemoRoomLifecycle.Removed;
+            _rooms.Remove(room);
+            for (int index = 0; index < participants.Length; index++)
+            {
+                DemoSession session = participants[index];
+                if (session.Phase == DemoSessionPhase.Closed) continue;
+                session.Phase = DemoSessionPhase.Settlement;
+                session.Queue(new ServerControlEventMessage
+                {
+                    BattleSettlement = new BattleSettlementEventMessage
+                    {
+                        BattleId = preparation?.BattleId ?? 0,
+                        Reason = BattleSettlementReasonMessage.BattleSettlementReasonAborted,
+                        Detail = detail,
+                    },
+                });
+            }
         }
 
         private void ProcessCommand(ControlConnection connection, byte[] payload)
@@ -605,6 +746,72 @@ namespace LockstepArena.Server.DemoHost
                 Closed = true;
                 try { _stream.Dispose(); }
                 finally { _client.Dispose(); }
+            }
+        }
+
+        private sealed class BattleAttachment : IDisposable
+        {
+            private readonly byte[] _ticket = new byte[16];
+            private TcpClient? _client;
+            private readonly NetworkStream _stream;
+            private int _ticketOffset;
+
+            internal BattleAttachment(TcpClient client)
+            {
+                _client = client;
+                _stream = client.GetStream();
+            }
+
+            internal BattlePreparation? Preparation { get; private set; }
+            internal PlayerSlot Slot { get; private set; }
+            internal bool Closed { get; private set; }
+
+            internal bool Progress(TcpDemoServer server)
+            {
+                TcpClient client = _client ?? throw new InvalidOperationException("Attachment client ownership was transferred.");
+                if (Preparation is null)
+                {
+                    if (!client.Client.Poll(0, SelectMode.SelectRead)) return false;
+                    if (client.Client.Available == 0) throw new EndOfStreamException("Battle ticket ended early.");
+                    int read = _stream.Read(_ticket, _ticketOffset, _ticket.Length - _ticketOffset);
+                    if (read == 0) throw new EndOfStreamException("Battle ticket ended early.");
+                    _ticketOffset += read;
+                    if (_ticketOffset == _ticket.Length)
+                    {
+                        if (!server.TryReserveTicket(_ticket, out BattlePreparation? preparation, out PlayerSlot slot)) throw new InvalidDataException("Battle ticket is invalid.");
+                        Preparation = preparation;
+                        Slot = slot;
+                    }
+                    return false;
+                }
+
+                if (!client.Client.Poll(0, SelectMode.SelectWrite)) return false;
+                _stream.WriteByte(0x01);
+                return true;
+            }
+
+            internal TcpClient DetachClient()
+            {
+                TcpClient result = _client ?? throw new InvalidOperationException("Attachment ownership was already transferred.");
+                _client = null;
+                return result;
+            }
+
+            internal void ReleaseReservation()
+            {
+                Preparation?.ReleaseReservation(Slot);
+            }
+
+            public void Dispose()
+            {
+                if (Closed) return;
+                Closed = true;
+                try { _stream.Dispose(); }
+                finally
+                {
+                    _client?.Dispose();
+                    _client = null;
+                }
             }
         }
     }

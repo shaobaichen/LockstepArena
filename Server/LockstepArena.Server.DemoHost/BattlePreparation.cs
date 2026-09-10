@@ -1,5 +1,7 @@
 using System;
+using System.Net.Sockets;
 using LockstepArena.Protocol.Wire;
+using LockstepArena.Server.LiveTcp;
 using LockstepArena.Simulation;
 
 namespace LockstepArena.Server.DemoHost
@@ -9,6 +11,9 @@ namespace LockstepArena.Server.DemoHost
         private readonly DemoSession[] _participants;
         private readonly byte[][] _tickets;
         private readonly BattlePreparingEventMessage[] _events;
+        private readonly bool[] _reserved;
+        private readonly bool[] _used;
+        private readonly TcpClient?[] _attachedClients;
 
         internal BattlePreparation(ulong battleId, BattleState initialState, uint finalStateTick, DemoSession[] participants, byte[][] tickets, BattlePreparingEventMessage[] events)
         {
@@ -19,12 +24,18 @@ namespace LockstepArena.Server.DemoHost
             _tickets = new byte[tickets.Length][];
             for (int index = 0; index < tickets.Length; index++) _tickets[index] = (byte[])tickets[index].Clone();
             _events = (BattlePreparingEventMessage[])events.Clone();
+            _reserved = new bool[tickets.Length];
+            _used = new bool[tickets.Length];
+            _attachedClients = new TcpClient?[tickets.Length];
         }
 
         internal ulong BattleId { get; }
         internal BattleState InitialState { get; }
         internal uint FinalStateTick { get; }
         internal int ParticipantCount => _participants.Length;
+        internal int AttachedCount { get; private set; }
+        internal bool IsInvalidated { get; private set; }
+        internal TcpSharedBattleSession? SharedSession { get; private set; }
 
         internal DemoSession GetParticipant(PlayerSlot slot)
         {
@@ -42,6 +53,75 @@ namespace LockstepArena.Server.DemoHost
         {
             ValidateSlot(slot);
             return _events[slot.Value].Clone();
+        }
+
+        internal bool TryReserveTicket(byte[] candidate, out PlayerSlot slot)
+        {
+            if (candidate is null) throw new ArgumentNullException(nameof(candidate));
+            if (!IsInvalidated && candidate.Length == 16)
+            {
+                for (int index = 0; index < _tickets.Length; index++)
+                {
+                    if (!_used[index] && !_reserved[index] && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(candidate, _tickets[index]))
+                    {
+                        _reserved[index] = true;
+                        slot = new PlayerSlot(index);
+                        return true;
+                    }
+                }
+            }
+
+            slot = default;
+            return false;
+        }
+
+        internal void ReleaseReservation(PlayerSlot slot)
+        {
+            ValidateSlot(slot);
+            if (!_used[slot.Value]) _reserved[slot.Value] = false;
+        }
+
+        internal void CommitAttachment(PlayerSlot slot, TcpClient client)
+        {
+            ValidateSlot(slot);
+            if (IsInvalidated || !_reserved[slot.Value] || _used[slot.Value]) throw new InvalidOperationException("Ticket reservation is no longer valid.");
+            _attachedClients[slot.Value] = client ?? throw new ArgumentNullException(nameof(client));
+            _used[slot.Value] = true;
+            _reserved[slot.Value] = false;
+            AttachedCount++;
+        }
+
+        internal TcpClient GetAttachedClient(PlayerSlot slot)
+        {
+            ValidateSlot(slot);
+            return _attachedClients[slot.Value] ?? throw new InvalidOperationException("Participant is not attached.");
+        }
+
+        internal void Activate(DemoServerOptions options)
+        {
+            if (options is null) throw new ArgumentNullException(nameof(options));
+            if (IsInvalidated) throw new InvalidOperationException("Preparation is invalidated.");
+            if (SharedSession is not null) return;
+            if (AttachedCount != ParticipantCount) throw new InvalidOperationException("Every participant must attach first.");
+            var bindings = new TcpBattleParticipantBinding[ParticipantCount];
+            for (int index = 0; index < bindings.Length; index++)
+            {
+                var slot = new PlayerSlot(index);
+                bindings[index] = new TcpBattleParticipantBinding(GetAttachedClient(slot), InitialState.Roster.GetPlayerId(slot), slot);
+            }
+            SharedSession = new TcpSharedBattleSession(InitialState, bindings, options.InputDelayTicks, options.MaxFutureTickOffset, options.AuthoritativeHistoryCapacity, options.MaxBattlePayloadLength, options.BattleReceiveBufferLength, options.BattleReceiveOffset, options.BattleReceiveReadCapacity);
+        }
+
+        internal void Invalidate()
+        {
+            if (IsInvalidated) return;
+            IsInvalidated = true;
+            if (SharedSession is not null)
+            {
+                SharedSession.Dispose();
+                return;
+            }
+            for (int index = 0; index < _attachedClients.Length; index++) _attachedClients[index]?.Dispose();
         }
 
         private void ValidateSlot(PlayerSlot slot)
