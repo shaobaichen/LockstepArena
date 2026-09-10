@@ -54,6 +54,7 @@ namespace LockstepArena.Client.Demo
         private ulong _predictedDigest;
         private BattleSettlementEventMessage? _pendingSettlement;
         private bool _settlementVerified;
+        private bool _exitRequested;
         private bool _disposed;
 
         public TcpDemoClient(DemoClientOptions options)
@@ -165,7 +166,9 @@ namespace LockstepArena.Client.Demo
         {
             if (_phase == DemoClientPhase.Disposed) throw new ObjectDisposedException(nameof(TcpDemoClient));
             if (_phase == DemoClientPhase.Faulted) throw new InvalidOperationException("The client is faulted.");
+            if (_phase == DemoClientPhase.Disconnected || _exitRequested) throw new InvalidOperationException("Exit is not available in the current client state.");
             Queue(new ClientControlCommandMessage { ExitSession = new ExitSessionCommandMessage() });
+            _exitRequested = true;
         }
 
         public DemoClientPumpResult PumpOnce(LocalInputSample? localInput)
@@ -174,13 +177,19 @@ namespace LockstepArena.Client.Demo
             try
             {
                 int sent = PumpSend();
+                if (_exitRequested && _pendingControlBytes == 0)
+                {
+                    CompleteExit();
+                    return new DemoClientPumpResult(sent, 0, 0, false);
+                }
                 int processed = PumpReceive();
                 ProgressBattleAttachment();
                 int authority = 0;
                 bool prediction = false;
                 if (_battleRuntime is not null &&
                     (_phase == DemoClientPhase.InBattle ||
-                     _phase == DemoClientPhase.SettlementPendingAuthority))
+                     _phase == DemoClientPhase.SettlementPendingAuthority) &&
+                    _battleRuntime.AuthoritativeState.Tick < _finalStateTick)
                 {
                     LocalInputSample? acceptedInput =
                         _phase == DemoClientPhase.InBattle &&
@@ -310,6 +319,7 @@ namespace LockstepArena.Client.Demo
                 case ServerControlEventMessage.EventOneofCase.LobbyEntered:
                     ClearRoomAndBattlePresentation();
                     _phase = DemoClientPhase.Lobby;
+                    Queue(new ClientControlCommandMessage { RequestRoomList = new RequestRoomListCommandMessage() });
                     break;
                 case ServerControlEventMessage.EventOneofCase.RoomList:
                     break;
@@ -547,6 +557,19 @@ namespace LockstepArena.Client.Demo
             _battleInitialState = null;
             _pendingSettlement = null;
             _settlementVerified = false;
+        }
+
+        private void CompleteExit()
+        {
+            DisposeBattleRuntime();
+            _stream?.Dispose();
+            _client?.Dispose();
+            _stream = null;
+            _client = null;
+            _sending = null;
+            _sendOffset = 0;
+            _exitRequested = false;
+            _phase = DemoClientPhase.Disconnected;
         }
 
         private static bool StatesHaveSameValue(BattleState left, BattleState right)
