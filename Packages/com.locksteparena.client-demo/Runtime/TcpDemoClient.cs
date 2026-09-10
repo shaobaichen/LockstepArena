@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using Google.Protobuf;
 using LockstepArena.Client.LiveTcp;
 using LockstepArena.Protocol;
@@ -29,7 +30,10 @@ namespace LockstepArena.Client.Demo
         private string _nickname = string.Empty;
         private ulong _roomId;
         private string _roomName = string.Empty;
+        private string _roomList = string.Empty;
+        private string _roomParticipants = string.Empty;
         private ulong _battleId;
+        private string _battleRoster = string.Empty;
         private string _lastRejection = string.Empty;
         private BattlePreparingEventMessage? _preparing;
         private BattleState? _battleInitialState;
@@ -77,7 +81,10 @@ namespace LockstepArena.Client.Demo
                     _nickname,
                     _roomId,
                     _roomName,
+                    _roomList,
+                    _roomParticipants,
                     _battleId,
+                    _battleRoster,
                     _lastRejection,
                     _serverStateTick,
                     _nextPublishTick,
@@ -299,6 +306,7 @@ namespace LockstepArena.Client.Demo
                 case ServerControlEventMessage.EventOneofCase.RoomSnapshot:
                     _roomId = message.RoomSnapshot.RoomId;
                     _roomName = message.RoomSnapshot.RoomName;
+                    _roomParticipants = FormatRoomParticipants(message.RoomSnapshot);
                     _phase = DemoClientPhase.Room;
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattlePreparing:
@@ -322,6 +330,7 @@ namespace LockstepArena.Client.Demo
                     Queue(new ClientControlCommandMessage { RequestRoomList = new RequestRoomListCommandMessage() });
                     break;
                 case ServerControlEventMessage.EventOneofCase.RoomList:
+                    _roomList = FormatRoomList(message.RoomList);
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattleStatus:
                     ReceiveBattleStatus(message.BattleStatus);
@@ -355,6 +364,7 @@ namespace LockstepArena.Client.Demo
             }
             _preparing = preparing.Clone();
             _battleInitialState = initialState;
+            _battleRoster = FormatBattleRoster(initialState.Roster);
             _battleId = preparing.BattleId;
             _finalStateTick = preparing.Bootstrap.FinalStateTick;
             if (_finalStateTick == 0U) throw new InvalidDataException("Final battle Tick must be positive.");
@@ -552,7 +562,9 @@ namespace LockstepArena.Client.Demo
             DisposeBattleRuntime();
             _roomId = 0;
             _roomName = string.Empty;
+            _roomParticipants = string.Empty;
             _battleId = 0;
+            _battleRoster = string.Empty;
             _preparing = null;
             _battleInitialState = null;
             _pendingSettlement = null;
@@ -587,6 +599,48 @@ namespace LockstepArena.Client.Demo
                     leftPlayer.Aim != rightPlayer.Aim) return false;
             }
             return true;
+        }
+
+        private static string FormatRoomList(RoomListEventMessage roomList)
+        {
+            var result = new StringBuilder();
+            for (int index = 0; index < roomList.Rooms.Count; index++)
+            {
+                if (index > 0) result.Append(" | ");
+                RoomSummaryMessage room = roomList.Rooms[index];
+                result.Append("Room").Append(room.RoomId).Append(' ')
+                    .Append(room.RoomName).Append(" host=").Append(room.HostNickname)
+                    .Append(' ').Append(room.ParticipantCount).Append('/')
+                    .Append(room.Capacity).Append(' ').Append(room.Lifecycle);
+            }
+            return result.ToString();
+        }
+
+        private static string FormatRoomParticipants(RoomSnapshotEventMessage room)
+        {
+            var result = new StringBuilder();
+            for (int index = 0; index < room.Participants.Count; index++)
+            {
+                if (index > 0) result.Append(" | ");
+                RoomParticipantMessage participant = room.Participants[index];
+                result.Append(participant.JoinOrdinal).Append(':').Append(participant.Nickname)
+                    .Append(" PlayerId").Append(participant.SessionId);
+                if (participant.IsHost) result.Append(" host");
+                result.Append(participant.IsReady ? " ready" : " unready");
+            }
+            return result.ToString();
+        }
+
+        private static string FormatBattleRoster(ActiveRoster roster)
+        {
+            var result = new StringBuilder();
+            for (int index = 0; index < roster.Count; index++)
+            {
+                if (index > 0) result.Append(" | ");
+                result.Append("Slot").Append(index).Append("/PlayerId")
+                    .Append(roster.GetPlayerId(new PlayerSlot(index)).Value);
+            }
+            return result.ToString();
         }
 
         private void RequirePhase(DemoClientPhase phase)

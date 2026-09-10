@@ -575,8 +575,7 @@ namespace LockstepArena.Server.DemoHost
                         SetReady(ready.SessionId, command.SetReady.IsReady);
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.StartBattle:
-                        DemoSession starter = RequireNamed(connection);
-                        StartBattle(starter.SessionId);
+                        ProcessStartBattle(connection);
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.ReturnToLobby:
                         ReturnSettledSession(RequireNamed(connection));
@@ -628,6 +627,33 @@ namespace LockstepArena.Server.DemoHost
             var result = new RoomListEventMessage();
             result.Rooms.Add(GetRoomSummaries());
             return result;
+        }
+
+        private void ProcessStartBattle(ControlConnection connection)
+        {
+            DemoSession starter = RequireNamed(connection);
+            RequirePhase(starter, DemoSessionPhase.InRoom);
+            DemoRoom room = GetRoom(starter.RoomId);
+            if (room.HostSessionId != starter.SessionId)
+            {
+                QueueRejection(connection, ControlRejectReasonMessage.ControlRejectReasonNotHost, "Only the host may start.");
+                return;
+            }
+
+            if (room.ParticipantCount != room.Capacity)
+            {
+                QueueRejection(connection, ControlRejectReasonMessage.ControlRejectReasonNotReady, "The room is not full.");
+                return;
+            }
+
+            for (int index = 0; index < room.ParticipantCount; index++)
+            {
+                if (room.GetParticipant(index).IsReady) continue;
+                QueueRejection(connection, ControlRejectReasonMessage.ControlRejectReasonNotReady, "Every participant must be ready.");
+                return;
+            }
+
+            StartBattle(starter.SessionId);
         }
 
         private static void QueueRejection(ControlConnection connection, ControlRejectReasonMessage reason, string detail)

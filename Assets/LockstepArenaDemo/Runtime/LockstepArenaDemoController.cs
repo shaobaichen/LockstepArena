@@ -28,7 +28,7 @@ namespace LockstepArena.Demo
             try
             {
                 LocalInputSample? input = _client.Phase == DemoClientPhase.InBattle && scriptedGoldenInput
-                    ? CreateScriptedInput(_client.Snapshot.PredictedTick)
+                    ? CreateScriptedInput(_client.Snapshot.Nickname, _client.Snapshot.PredictedTick)
                     : null;
                 _client.PumpOnce(input);
             }
@@ -72,6 +72,7 @@ namespace LockstepArena.Demo
         {
             if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
             return $"Phase={snapshot.Phase} Session={snapshot.SessionId} Room={snapshot.RoomId} Battle={snapshot.BattleId} " +
+                $"Rooms=[{snapshot.RoomList}] Participants=[{snapshot.RoomParticipants}] Roster=[{snapshot.BattleRoster}] " +
                 $"ServerTick={snapshot.ServerStateTick} NextPublishTick={snapshot.NextPublishTick} " +
                 $"AuthorityTick={snapshot.AuthoritativeTick} PredictedTick={snapshot.PredictedTick} " +
                 $"PendingPredictions={snapshot.PendingPredictionCount} PendingAuthority={snapshot.PendingAuthoritativeFrameCount} " +
@@ -104,15 +105,31 @@ namespace LockstepArena.Demo
             _lastError = string.Empty;
         }
 
-        private static LocalInputSample CreateScriptedInput(uint tick)
+        private static LocalInputSample CreateScriptedInput(string nickname, uint tick)
         {
-            return (tick % 4U) switch
+            if (string.Equals(nickname, "Alpha", StringComparison.Ordinal))
             {
-                0U => new LocalInputSample(1, 0, checked((ushort)(1000U + tick))),
-                1U => new LocalInputSample(0, 1, checked((ushort)(1000U + tick))),
-                2U => new LocalInputSample(-1, 0, checked((ushort)(1000U + tick))),
-                _ => new LocalInputSample(0, -1, checked((ushort)(1000U + tick))),
-            };
+                return (tick % 4U) switch
+                {
+                    0U => new LocalInputSample(-1, 0, checked((ushort)(10100U + tick))),
+                    1U => new LocalInputSample(0, 1, checked((ushort)(10100U + tick))),
+                    2U => new LocalInputSample(1, 0, checked((ushort)(10100U + tick))),
+                    _ => new LocalInputSample(0, -1, checked((ushort)(10100U + tick))),
+                };
+            }
+
+            if (string.Equals(nickname, "Bravo", StringComparison.Ordinal))
+            {
+                return (tick % 4U) switch
+                {
+                    0U => new LocalInputSample(1, 0, checked((ushort)(20100U + tick))),
+                    1U => new LocalInputSample(0, -1, checked((ushort)(20100U + tick))),
+                    2U => new LocalInputSample(-1, 0, checked((ushort)(20100U + tick))),
+                    _ => new LocalInputSample(0, 1, checked((ushort)(20100U + tick))),
+                };
+            }
+
+            return new LocalInputSample(0, 0, checked((ushort)(1000U + tick)));
         }
 
         private static string LabeledText(string label, string value)
