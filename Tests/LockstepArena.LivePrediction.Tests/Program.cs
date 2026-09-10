@@ -23,7 +23,8 @@ namespace LockstepArena.LivePrediction.Tests
                 TcpSharedBattleSessionTests.ConstructionTests,
                 TcpSharedBattleSessionTests.PumpTests,
                 PredictedTcpClientBattleRuntimeTests.TransportTests,
-                PredictedTcpClientBattleRuntimeTests.CoreTests);
+                PredictedTcpClientBattleRuntimeTests.CoreTests,
+                PredictedTcpClientBattleRuntimeTests.BoundedAuthorityTests);
             int failures = 0;
             for (int index = 0; index < tests.Length; index++)
             {

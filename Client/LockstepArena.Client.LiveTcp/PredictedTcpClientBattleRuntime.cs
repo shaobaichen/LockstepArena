@@ -216,13 +216,37 @@ namespace LockstepArena.Client.LiveTcp
         {
             ThrowIfDisposed();
             ThrowIfFaulted();
-            var simulation = new BattleSimulation(_initialState);
-            for (int index = 0; index < _replay.Length; index++)
+            try
             {
-                simulation.Step(_replay[index]);
-            }
+                var simulation = new BattleSimulation(_initialState);
+                for (int index = 0; index < _replay.Length; index++)
+                {
+                    simulation.Step(_replay[index]);
+                }
 
-            return simulation.State;
+                BattleState reconstructed = simulation.State;
+                if (!StatesHaveSameValue(reconstructed, _timeline.AuthoritativeState) ||
+                    StateDigest.Compute(reconstructed) !=
+                        StateDigest.Compute(_timeline.AuthoritativeState))
+                {
+                    throw new InvalidOperationException(
+                        "Authoritative Replay does not match the live authoritative state.");
+                }
+
+                return reconstructed;
+            }
+            catch (Exception exception)
+            {
+                _faulted = true;
+                if (exception is InvalidOperationException)
+                {
+                    throw;
+                }
+
+                throw new InvalidOperationException(
+                    "Authoritative Replay reconstruction failed.",
+                    exception);
+            }
         }
 
         public void Dispose()
@@ -243,6 +267,42 @@ namespace LockstepArena.Client.LiveTcp
                 return;
             }
 
+            ulong pendingAfter = (ulong)_pendingAuthority.Length +
+                checked((uint)received.Length);
+            if (pendingAfter > checked((uint)_maxPendingAuthoritativeFrames))
+            {
+                throw new InvalidOperationException(
+                    "The pending authoritative frame capacity would be exceeded.");
+            }
+
+            ulong replayReservation = (ulong)_replay.Length + pendingAfter;
+            if (replayReservation > checked((uint)_maxReplayFrames))
+            {
+                throw new InvalidOperationException(
+                    "The authoritative Replay capacity would be exceeded.");
+            }
+
+            ulong expectedTick = (ulong)_timeline.AuthoritativeState.Tick +
+                checked((uint)_pendingAuthority.Length);
+            for (int index = 0; index < received.Length; index++)
+            {
+                FrameData frame = received[index] ?? throw new InvalidOperationException(
+                    "A received authoritative frame cannot be null.");
+                if (!_timeline.AuthoritativeState.Roster.HasSameStructure(frame.Roster))
+                {
+                    throw new InvalidOperationException(
+                        "A received authoritative frame has a different roster.");
+                }
+
+                if (expectedTick >= uint.MaxValue || frame.Tick != (uint)expectedTick)
+                {
+                    throw new InvalidOperationException(
+                        "Received authoritative frames must be contiguous from the authoritative frontier.");
+                }
+
+                expectedTick++;
+            }
+
             var candidate = new FrameData[_pendingAuthority.Length + received.Length];
             Array.Copy(_pendingAuthority, candidate, _pendingAuthority.Length);
             Array.Copy(received, 0, candidate, _pendingAuthority.Length, received.Length);
@@ -252,24 +312,33 @@ namespace LockstepArena.Client.LiveTcp
         private bool ReconcileOldest()
         {
             FrameData authority = _pendingAuthority[0];
-            bool dirty = _timeline.ReconcileAuthoritative(authority);
-
             var candidateReplay = new FrameData[_replay.Length + 1];
             Array.Copy(_replay, candidateReplay, _replay.Length);
             candidateReplay[candidateReplay.Length - 1] = authority;
 
+            var candidateRemoteAuthorityCache = new InputFrame?[_remoteAuthorityCache.Length];
+            Array.Copy(
+                _remoteAuthorityCache,
+                candidateRemoteAuthorityCache,
+                _remoteAuthorityCache.Length);
             for (int index = 0; index < authority.InputCount; index++)
             {
                 var slot = new PlayerSlot(index);
                 if (slot != LocalPlayerSlot)
                 {
-                    _remoteAuthorityCache[index] = authority.GetInput(slot);
+                    candidateRemoteAuthorityCache[index] = authority.GetInput(slot);
                 }
             }
 
             var candidatePending = new FrameData[_pendingAuthority.Length - 1];
             Array.Copy(_pendingAuthority, 1, candidatePending, 0, candidatePending.Length);
+
+            bool dirty = _timeline.ReconcileAuthoritative(authority);
             _replay = candidateReplay;
+            Array.Copy(
+                candidateRemoteAuthorityCache,
+                _remoteAuthorityCache,
+                candidateRemoteAuthorityCache.Length);
             _pendingAuthority = candidatePending;
             return dirty;
         }
@@ -332,6 +401,31 @@ namespace LockstepArena.Client.LiveTcp
             {
                 throw new InvalidOperationException("The predicted TCP client runtime is faulted.");
             }
+        }
+
+        private static bool StatesHaveSameValue(BattleState left, BattleState right)
+        {
+            if (left.Tick != right.Tick ||
+                left.PlayerCount != right.PlayerCount ||
+                !left.Roster.HasSameStructure(right.Roster))
+            {
+                return false;
+            }
+
+            for (int index = 0; index < left.PlayerCount; index++)
+            {
+                var slot = new PlayerSlot(index);
+                PlayerState leftPlayer = left.GetPlayerState(slot);
+                PlayerState rightPlayer = right.GetPlayerState(slot);
+                if (leftPlayer.PositionX != rightPlayer.PositionX ||
+                    leftPlayer.PositionZ != rightPlayer.PositionZ ||
+                    leftPlayer.Aim != rightPlayer.Aim)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

@@ -32,6 +32,20 @@ namespace LockstepArena.LivePrediction.Tests
             new TestCase(nameof(ConsecutiveDirtyAuthoritiesReplayDeterministically), ConsecutiveDirtyAuthoritiesReplayDeterministically),
         };
 
+        public static readonly TestCase[] BoundedAuthorityTests =
+        {
+            new TestCase(nameof(ExistingAuthorityBacklogSkipsNetworkRead), ExistingAuthorityBacklogSkipsNetworkRead),
+            new TestCase(nameof(CatchUpNeverExceedsMaxAuthoritativeFramesPerUpdate), CatchUpNeverExceedsMaxAuthoritativeFramesPerUpdate),
+            new TestCase(nameof(CoalescedExactCapacityBatchIsAdmittedAtomicallyInTickOrder), CoalescedExactCapacityBatchIsAdmittedAtomicallyInTickOrder),
+            new TestCase(nameof(OverCapacityBatchFaultsWithZeroAdmissionAndReconciliation), OverCapacityBatchFaultsWithZeroAdmissionAndReconciliation),
+            new TestCase(nameof(InvalidRosterOrTickBatchFaultsBeforeQueueOrTimelineMutation), InvalidRosterOrTickBatchFaultsBeforeQueueOrTimelineMutation),
+            new TestCase(nameof(ReplayReservationCountsHistoryPendingAndCandidateFrames), ReplayReservationCountsHistoryPendingAndCandidateFrames),
+            new TestCase(nameof(ReplayCapacityRejectionAdmitsNoCandidateFrame), ReplayCapacityRejectionAdmitsNoCandidateFrame),
+            new TestCase(nameof(ReplayHistoryNeverEvictsOrGrowsBeyondCapacity), ReplayHistoryNeverEvictsOrGrowsBeyondCapacity),
+            new TestCase(nameof(ReplayReconstructsAuthoritativeStateAndDigest), ReplayReconstructsAuthoritativeStateAndDigest),
+            new TestCase(nameof(ReplayCorruptionEntersStickyFailStop), ReplayCorruptionEntersStickyFailStop),
+        };
+
         private static void LegacyTcpClientBattlePumpStillStepsItsOwnSimulation()
         {
             BattleState initialState = TcpSharedBattleSessionTests.CreateState(1);
@@ -234,6 +248,178 @@ namespace LockstepArena.LivePrediction.Tests
             TestAssert.Equal(102U, fixture.Runtime.PredictedState.Tick);
         }
 
+        private static void ExistingAuthorityBacklogSkipsNetworkRead()
+        {
+            using var fixture = new PredictedClientFixture(
+                1,
+                maxAuthoritativeFramesPerUpdate: 1);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2));
+            PredictedClientUpdateResult first = fixture.Runtime.Update(null);
+            TestAssert.Equal(1, first.ReconciledAuthoritativeFrameCount);
+            TestAssert.Equal(1, fixture.Runtime.PendingAuthoritativeFrameCount);
+
+            fixture.SendRawAuthorityPayload(new byte[] { 0xFF, 0xFF });
+            PredictedClientUpdateResult second = fixture.Runtime.Update(null);
+            TestAssert.Equal(1, second.ReconciledAuthoritativeFrameCount);
+            TestAssert.Equal(0, fixture.Runtime.PendingAuthoritativeFrameCount);
+            TestAssert.Throws<Exception>(() => fixture.Runtime.Update(null));
+        }
+
+        private static void CatchUpNeverExceedsMaxAuthoritativeFramesPerUpdate()
+        {
+            using var fixture = new PredictedClientFixture(
+                1,
+                maxAuthoritativeFramesPerUpdate: 2);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2),
+                SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+
+            PredictedClientUpdateResult first = fixture.Runtime.Update(null);
+            TestAssert.Equal(2, first.ReconciledAuthoritativeFrameCount);
+            TestAssert.Equal(1, fixture.Runtime.PendingAuthoritativeFrameCount);
+            PredictedClientUpdateResult second = fixture.Runtime.Update(null);
+            TestAssert.Equal(1, second.ReconciledAuthoritativeFrameCount);
+            TestAssert.Equal(103U, fixture.Runtime.AuthoritativeState.Tick);
+        }
+
+        private static void CoalescedExactCapacityBatchIsAdmittedAtomicallyInTickOrder()
+        {
+            using var fixture = new PredictedClientFixture(
+                1,
+                maxAuthoritativeFramesPerUpdate: 1,
+                maxPendingAuthoritativeFrames: 3,
+                maxReplayFrames: 3);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2),
+                SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+
+            fixture.Runtime.Update(null);
+            TestAssert.Equal(101U, fixture.Runtime.AuthoritativeState.Tick);
+            TestAssert.Equal(2, fixture.Runtime.PendingAuthoritativeFrameCount);
+            TestAssert.Equal(1, fixture.Runtime.ReplayFrameCount);
+        }
+
+        private static void OverCapacityBatchFaultsWithZeroAdmissionAndReconciliation()
+        {
+            using var fixture = new PredictedClientFixture(
+                1,
+                maxPendingAuthoritativeFrames: 2,
+                maxReplayFrames: 8);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2),
+                SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+
+            TestAssert.Throws<InvalidOperationException>(() => fixture.Runtime.Update(null));
+            TestAssert.Equal(100U, fixture.Runtime.AuthoritativeState.Tick);
+            TestAssert.Equal(0, fixture.Runtime.PendingAuthoritativeFrameCount);
+            TestAssert.Equal(0, fixture.Runtime.ReplayFrameCount);
+            TestAssert.Throws<InvalidOperationException>(() => fixture.Runtime.Update(null));
+        }
+
+        private static void InvalidRosterOrTickBatchFaultsBeforeQueueOrTimelineMutation()
+        {
+            using (var fixture = new PredictedClientFixture(1))
+            {
+                BattleState other = TcpSharedBattleSessionTests.CreateState(2);
+                fixture.SendAuthority(SinglePlayerFrame(other.Roster, 100U, 1, playerCount: 2));
+                TestAssert.Throws<Exception>(() => fixture.Runtime.Update(null));
+                AssertUnchangedFrontier(fixture.Runtime, 100U);
+            }
+
+            using (var fixture = new PredictedClientFixture(1))
+            {
+                fixture.SendAuthority(SinglePlayerFrame(fixture.State.Roster, 101U, 1));
+                TestAssert.Throws<InvalidOperationException>(() => fixture.Runtime.Update(null));
+                AssertUnchangedFrontier(fixture.Runtime, 100U);
+            }
+        }
+
+        private static void ReplayReservationCountsHistoryPendingAndCandidateFrames()
+        {
+            using var fixture = new PredictedClientFixture(
+                1,
+                maxAuthoritativeFramesPerUpdate: 1,
+                maxPendingAuthoritativeFrames: 3,
+                maxReplayFrames: 3);
+            fixture.SendAuthority(SinglePlayerFrame(fixture.State.Roster, 100U, 1));
+            fixture.Runtime.Update(null);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2),
+                SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+            fixture.Runtime.Update(null);
+
+            TestAssert.Equal(2, fixture.Runtime.ReplayFrameCount);
+            TestAssert.Equal(1, fixture.Runtime.PendingAuthoritativeFrameCount);
+            TestAssert.Equal(102U, fixture.Runtime.AuthoritativeState.Tick);
+        }
+
+        private static void ReplayCapacityRejectionAdmitsNoCandidateFrame()
+        {
+            using var fixture = new PredictedClientFixture(
+                1,
+                maxReplayFrames: 2);
+            fixture.SendAuthority(SinglePlayerFrame(fixture.State.Roster, 100U, 1));
+            fixture.Runtime.Update(null);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2),
+                SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+
+            TestAssert.Throws<InvalidOperationException>(() => fixture.Runtime.Update(null));
+            TestAssert.Equal(1, fixture.Runtime.ReplayFrameCount);
+            TestAssert.Equal(0, fixture.Runtime.PendingAuthoritativeFrameCount);
+            TestAssert.Equal(101U, fixture.Runtime.AuthoritativeState.Tick);
+        }
+
+        private static void ReplayHistoryNeverEvictsOrGrowsBeyondCapacity()
+        {
+            using var fixture = new PredictedClientFixture(1, maxReplayFrames: 2);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2));
+            fixture.Runtime.Update(null);
+            TestAssert.Equal(2, fixture.Runtime.ReplayFrameCount);
+
+            fixture.SendAuthority(SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+            TestAssert.Throws<InvalidOperationException>(() => fixture.Runtime.Update(null));
+            TestAssert.Equal(2, fixture.Runtime.ReplayFrameCount);
+        }
+
+        private static void ReplayReconstructsAuthoritativeStateAndDigest()
+        {
+            using var fixture = new PredictedClientFixture(1, maxReplayFrames: 3);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2));
+            fixture.Runtime.Update(null);
+
+            BattleState reconstructed = fixture.Runtime.ReconstructAuthoritativeState();
+            AssertStatesEqual(fixture.Runtime.AuthoritativeState, reconstructed);
+            TestAssert.Equal(
+                StateDigest.Compute(fixture.Runtime.AuthoritativeState),
+                StateDigest.Compute(reconstructed));
+        }
+
+        private static void ReplayCorruptionEntersStickyFailStop()
+        {
+            using var fixture = new PredictedClientFixture(1, maxReplayFrames: 3);
+            fixture.SendAuthority(SinglePlayerFrame(fixture.State.Roster, 100U, 1));
+            fixture.Runtime.Update(null);
+            BattleState authoritativeBefore = fixture.Runtime.AuthoritativeState;
+            BattleState predictedBefore = fixture.Runtime.PredictedState;
+            CorruptReplay(fixture.Runtime, fixture.State.Roster);
+
+            TestAssert.Throws<InvalidOperationException>(
+                () => fixture.Runtime.ReconstructAuthoritativeState());
+            TestAssert.Same(authoritativeBefore, fixture.Runtime.AuthoritativeState);
+            TestAssert.Same(predictedBefore, fixture.Runtime.PredictedState);
+            TestAssert.Throws<InvalidOperationException>(() => fixture.Runtime.Update(null));
+        }
+
         private static void TransportOnlyReceiveMapsWithoutPersistentSimulation()
         {
             BattleState initialState = TcpSharedBattleSessionTests.CreateState(1);
@@ -324,9 +510,71 @@ namespace LockstepArena.LivePrediction.Tests
                 maxPendingAuthoritativeFrames,
                 maxReplayFrames,
                 4096,
-                64,
+                4096,
                 3,
-                61);
+                4093);
+        }
+
+        private static FrameData SinglePlayerFrame(
+            ActiveRoster roster,
+            uint tick,
+            ushort aim,
+            int playerCount = 1)
+        {
+            var inputs = new InputFrame[playerCount];
+            for (int index = 0; index < playerCount; index++)
+            {
+                inputs[index] = new InputFrame(
+                    tick,
+                    new PlayerSlot(index),
+                    index == 0 ? (sbyte)1 : (sbyte)0,
+                    0,
+                    checked((ushort)(aim + index)));
+            }
+
+            return FrameData.Create(roster, tick, inputs);
+        }
+
+        private static void AssertUnchangedFrontier(
+            PredictedTcpClientBattleRuntime runtime,
+            uint tick)
+        {
+            TestAssert.Equal(tick, runtime.AuthoritativeState.Tick);
+            TestAssert.Equal(tick, runtime.PredictedState.Tick);
+            TestAssert.Equal(0, runtime.PendingPredictionCount);
+            TestAssert.Equal(0, runtime.PendingAuthoritativeFrameCount);
+            TestAssert.Equal(0, runtime.ReplayFrameCount);
+        }
+
+        internal static void AssertStatesEqual(BattleState expected, BattleState actual)
+        {
+            TestAssert.Equal(expected.Tick, actual.Tick);
+            TestAssert.Equal(expected.PlayerCount, actual.PlayerCount);
+            TestAssert.True(expected.Roster.HasSameStructure(actual.Roster));
+            for (int index = 0; index < expected.PlayerCount; index++)
+            {
+                var slot = new PlayerSlot(index);
+                PlayerState expectedPlayer = expected.GetPlayerState(slot);
+                PlayerState actualPlayer = actual.GetPlayerState(slot);
+                TestAssert.Equal(expectedPlayer.PositionX, actualPlayer.PositionX);
+                TestAssert.Equal(expectedPlayer.PositionZ, actualPlayer.PositionZ);
+                TestAssert.Equal(expectedPlayer.Aim, actualPlayer.Aim);
+            }
+        }
+
+        private static void CorruptReplay(
+            PredictedTcpClientBattleRuntime runtime,
+            ActiveRoster roster)
+        {
+            FieldInfo? replayField = typeof(PredictedTcpClientBattleRuntime).GetField(
+                "_replay",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (replayField is null || replayField.FieldType != typeof(FrameData[]))
+            {
+                throw new InvalidOperationException("Replay container was not found.");
+            }
+
+            replayField.SetValue(runtime, new[] { SinglePlayerFrame(roster, 101U, 999) });
         }
 
         private static FrameData[] GetPredictedFrames(
@@ -416,9 +664,9 @@ namespace LockstepArena.LivePrediction.Tests
                 maxPendingAuthoritativeFrames,
                 maxReplayFrames,
                 4096,
-                64,
+                4096,
                 3,
-                61);
+                4093);
         }
 
         public BattleState State { get; }
@@ -436,14 +684,34 @@ namespace LockstepArena.LivePrediction.Tests
 
         public void SendAuthorities(params FrameData[] frames)
         {
-            NetworkStream stream = Accepted.GetStream();
+            var framedMessages = new byte[frames.Length][];
+            int totalLength = 0;
             for (int index = 0; index < frames.Length; index++)
             {
                 byte[] payload = ProtocolMapper.ToWire(frames[index]).ToByteArray();
-                byte[] framed = TcpSharedBattleSessionTests.Frame(payload);
-                stream.Write(framed, 0, framed.Length);
+                framedMessages[index] = TcpSharedBattleSessionTests.Frame(payload);
+                totalLength = checked(totalLength + framedMessages[index].Length);
             }
 
+            var streamBytes = new byte[totalLength];
+            int offset = 0;
+            for (int index = 0; index < framedMessages.Length; index++)
+            {
+                byte[] framed = framedMessages[index];
+                Array.Copy(framed, 0, streamBytes, offset, framed.Length);
+                offset += framed.Length;
+            }
+
+            NetworkStream stream = Accepted.GetStream();
+            stream.Write(streamBytes, 0, streamBytes.Length);
+            TcpSharedBattleSessionTests.WaitForReadable(Client.Client);
+        }
+
+        public void SendRawAuthorityPayload(byte[] payload)
+        {
+            byte[] framed = TcpSharedBattleSessionTests.Frame(payload);
+            NetworkStream stream = Accepted.GetStream();
+            stream.Write(framed, 0, framed.Length);
             TcpSharedBattleSessionTests.WaitForReadable(Client.Client);
         }
 
