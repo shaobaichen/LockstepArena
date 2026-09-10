@@ -36,6 +36,9 @@ namespace LockstepArena.Server.DemoHost
         internal int AttachedCount { get; private set; }
         internal bool IsInvalidated { get; private set; }
         internal TcpSharedBattleSession? SharedSession { get; private set; }
+        internal bool HasReportedStatus { get; private set; }
+        internal uint LastReportedStateTick { get; private set; }
+        internal uint LastReportedNextPublishTick { get; private set; }
 
         internal DemoSession GetParticipant(PlayerSlot slot)
         {
@@ -122,6 +125,20 @@ namespace LockstepArena.Server.DemoHost
                 return;
             }
             for (int index = 0; index < _attachedClients.Length; index++) _attachedClients[index]?.Dispose();
+        }
+
+        internal bool StatusChanged(uint stateTick, uint nextPublishTick)
+        {
+            return !HasReportedStatus ||
+                LastReportedStateTick != stateTick ||
+                LastReportedNextPublishTick != nextPublishTick;
+        }
+
+        internal void CommitReportedStatus(uint stateTick, uint nextPublishTick)
+        {
+            HasReportedStatus = true;
+            LastReportedStateTick = stateTick;
+            LastReportedNextPublishTick = nextPublishTick;
         }
 
         private void ValidateSlot(PlayerSlot slot)

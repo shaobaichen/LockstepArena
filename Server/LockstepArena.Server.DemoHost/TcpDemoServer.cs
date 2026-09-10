@@ -88,9 +88,9 @@ namespace LockstepArena.Server.DemoHost
 
             DrainAllSessionEvents();
             ProgressBattleAttachments();
-            int published = PumpBattles(out int aborted);
+            int published = PumpBattles(out int completed, out int aborted);
             DrainAllSessionEvents();
-            return new DemoServerPumpResult(accepted, acceptedBattle, processed, published, 0, aborted);
+            return new DemoServerPumpResult(accepted, acceptedBattle, processed, published, completed, aborted);
         }
 
         internal DemoSession EnterSession(string nickname)
@@ -290,6 +290,10 @@ namespace LockstepArena.Server.DemoHost
             {
                 AbortRoom(GetRoom(session.RoomId), "A participant control connection ended.");
             }
+            else if (session.Phase == DemoSessionPhase.Settlement)
+            {
+                RemoveSettledParticipant(session);
+            }
             else if (session.Phase == DemoSessionPhase.InRoom)
             {
                 DemoRoom room = GetRoom(session.RoomId);
@@ -387,9 +391,10 @@ namespace LockstepArena.Server.DemoHost
             }
         }
 
-        private int PumpBattles(out int aborted)
+        private int PumpBattles(out int completed, out int aborted)
         {
             int published = 0;
+            completed = 0;
             aborted = 0;
             DemoRoom[] rooms = _rooms.ToArray();
             for (int index = 0; index < rooms.Length; index++)
@@ -399,6 +404,23 @@ namespace LockstepArena.Server.DemoHost
                 try
                 {
                     published = checked(published + room.Preparation.SharedSession.PumpOnce());
+                    BattlePreparation preparation = room.Preparation;
+                    uint stateTick = preparation.SharedSession.ServerState.Tick;
+                    uint nextPublishTick = preparation.SharedSession.NextPublishTick;
+                    if (stateTick > preparation.FinalStateTick)
+                    {
+                        throw new InvalidOperationException("Battle state advanced beyond the final Tick.");
+                    }
+                    if (preparation.StatusChanged(stateTick, nextPublishTick))
+                    {
+                        QueueBattleStatus(room, preparation.BattleId, stateTick, nextPublishTick);
+                        preparation.CommitReportedStatus(stateTick, nextPublishTick);
+                    }
+                    if (stateTick == preparation.FinalStateTick)
+                    {
+                        CompleteBattle(room, preparation.SharedSession.ServerState);
+                        completed++;
+                    }
                 }
                 catch
                 {
@@ -407,6 +429,63 @@ namespace LockstepArena.Server.DemoHost
                 }
             }
             return published;
+        }
+
+        private static void QueueBattleStatus(DemoRoom room, ulong battleId, uint stateTick, uint nextPublishTick)
+        {
+            DemoSession[] participants = room.CopyParticipants();
+            for (int index = 0; index < participants.Length; index++)
+            {
+                participants[index].Queue(new ServerControlEventMessage
+                {
+                    BattleStatus = new BattleStatusEventMessage
+                    {
+                        BattleId = battleId,
+                        ServerStateTick = stateTick,
+                        NextPublishTick = nextPublishTick,
+                    },
+                });
+            }
+        }
+
+        private static void CompleteBattle(DemoRoom room, BattleState state)
+        {
+            BattlePreparation preparation = room.Preparation ?? throw new InvalidOperationException("Battle preparation is missing.");
+            var finalState = new FinalBattleStateMessage
+            {
+                Tick = state.Tick,
+                StateDigest = StateDigest.Compute(state),
+            };
+            for (int index = 0; index < state.PlayerCount; index++)
+            {
+                var slot = new PlayerSlot(index);
+                PlayerState player = state.GetPlayerState(slot);
+                finalState.PlayerStates.Add(new SettlementPlayerStateMessage
+                {
+                    PlayerSlot = checked((uint)index),
+                    PlayerId = state.Roster.GetPlayerId(slot).Value,
+                    PositionX = player.PositionX,
+                    PositionZ = player.PositionZ,
+                    Aim = player.Aim,
+                });
+            }
+
+            DemoSession[] participants = room.CopyParticipants();
+            room.Lifecycle = DemoRoomLifecycle.Settled;
+            preparation.Invalidate();
+            for (int index = 0; index < participants.Length; index++)
+            {
+                participants[index].Phase = DemoSessionPhase.Settlement;
+                participants[index].Queue(new ServerControlEventMessage
+                {
+                    BattleSettlement = new BattleSettlementEventMessage
+                    {
+                        BattleId = preparation.BattleId,
+                        Reason = BattleSettlementReasonMessage.BattleSettlementReasonTickLimitReached,
+                        FinalState = finalState.Clone(),
+                    },
+                });
+            }
         }
 
         private bool TryReserveTicket(byte[] ticket, out BattlePreparation? preparation, out PlayerSlot slot)
@@ -500,7 +579,8 @@ namespace LockstepArena.Server.DemoHost
                         StartBattle(starter.SessionId);
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.ReturnToLobby:
-                        throw new InvalidOperationException("Return is only valid after settlement.");
+                        ReturnSettledSession(RequireNamed(connection));
+                        break;
                     case ClientControlCommandMessage.CommandOneofCase.ExitSession:
                         CloseControl(connection);
                         break;
@@ -571,6 +651,27 @@ namespace LockstepArena.Server.DemoHost
 
             DemoSession host = GetSession(hostSessionId);
             MoveToLobby(host);
+        }
+
+        private void ReturnSettledSession(DemoSession session)
+        {
+            RequirePhase(session, DemoSessionPhase.Settlement);
+            RemoveSettledParticipant(session);
+            MoveToLobby(session);
+        }
+
+        private void RemoveSettledParticipant(DemoSession session)
+        {
+            DemoRoom room = GetRoom(session.RoomId);
+            if (room.Lifecycle != DemoRoomLifecycle.Settled) throw new InvalidOperationException("Room is not settled.");
+            int index = room.IndexOf(session.SessionId);
+            if (index < 0) throw new InvalidOperationException("Session is not in its settled room.");
+            room.RemoveAt(index);
+            if (room.ParticipantCount == 0)
+            {
+                room.Lifecycle = DemoRoomLifecycle.Removed;
+                _rooms.Remove(room);
+            }
         }
 
         private static void MoveToLobby(DemoSession session)
