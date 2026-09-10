@@ -25,6 +25,17 @@
         "com.locksteparena.simulation": "0.1.0"
       }
     },
+    "com.locksteparena.client-live-tcp": {
+      "version": "file:com.locksteparena.client-live-tcp",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.locksteparena.client-prediction": "0.1.0",
+        "com.locksteparena.protocol": "0.1.0",
+        "com.locksteparena.simulation": "0.1.0",
+        "com.locksteparena.stream-framing": "0.1.0"
+      }
+    },
     "com.locksteparena.simulation": {
       "version": "file:com.locksteparena.simulation",
       "depth": 0,

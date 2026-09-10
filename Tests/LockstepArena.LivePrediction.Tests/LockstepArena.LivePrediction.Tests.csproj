@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Client\LockstepArena.Client.LiveTcp\LockstepArena.Client.LiveTcp.csproj" />
+    <ProjectReference Include="..\..\Packages\com.locksteparena.client-live-tcp\Runtime\LockstepArena.Client.LiveTcp.csproj" />
     <ProjectReference Include="..\..\Server\LockstepArena.Server.LiveTcp\LockstepArena.Server.LiveTcp.csproj" />
     <ProjectReference Include="..\..\Packages\com.locksteparena.simulation\Runtime\LockstepArena.Simulation.csproj" />
     <ProjectReference Include="..\..\Packages\com.locksteparena.stream-framing\Runtime\LockstepArena.StreamFraming.csproj" />
