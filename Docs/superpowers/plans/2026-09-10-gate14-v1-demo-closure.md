@@ -49,11 +49,10 @@ At implementation authorization, replace the direct-parent assertion only if an 
 .gitignore
 Packages/com.locksteparena.protocol/Schema/lockstep_arena_protocol.proto
 Packages/com.locksteparena.protocol/Runtime/Generated/LockstepArenaProtocol.g.cs
-Packages/com.locksteparena.protocol/Runtime/ProtocolMapper.cs
+Packages/com.locksteparena.protocol/Runtime/Mapping/ProtocolMapper.cs
 Packages/packages-lock.json
 Tests/LockstepArena.LiveTcp.Tests/LockstepArena.LiveTcp.Tests.csproj
 Tests/LockstepArena.LivePrediction.Tests/LockstepArena.LivePrediction.Tests.csproj
-README.md
 Docs/Architecture/GATE14_MINIMAL_TCP_LOBBY_TO_BATTLE_DEMO.md   # evidence only in final task
 ```
 
@@ -121,6 +120,7 @@ Assets/LockstepArenaDemo/Tests/Editor/LockstepArena.Demo.Editor.Tests.asmdef
 Assets/LockstepArenaDemo/Tests/Editor/UnityDemoSceneTests.cs
 Assets/LockstepArenaDemo/Tests/Editor/UnityDemoAssemblyTests.cs
 Assets/LockstepArenaDemo/Tests/Editor/UnityDemoPresentationTests.cs
+README.md
 Docs/Architecture/LOCKSTEP_ARENA_V1_ARCHITECTURE.md
 ```
 
@@ -234,7 +234,7 @@ Both clients predict all four Ticks before authority, both Dirty sequences are e
 
 ## Task 1: Add the finite control Protocol and mapping
 
-**Files:** modify the sole `.proto`, sole generated `.g.cs`, and `ProtocolMapper.cs`; create `.gitignore`, DemoFlow csproj/runner/assertions, and `ControlProtocolTests.cs` changes described above.
+**Files:** modify the sole `.proto`, sole generated `.g.cs`, existing `Packages/com.locksteparena.protocol/Runtime/Mapping/ProtocolMapper.cs`, and existing `.gitignore`; create the DemoFlow csproj/runner/assertions and `ControlProtocolTests.cs` described above.
 
 1. Add Tests 1–8 to the registry and implement consumer expected literals. Add the DemoFlow csproj exception only.
 2. **RED:** run `dotnet build Tests/LockstepArena.DemoFlow.Tests/LockstepArena.DemoFlow.Tests.csproj -c Release`; require failure only because approved control DTOs/mapping are absent. If restore is needed, restore the frozen projects and rerun RED.
@@ -325,7 +325,7 @@ Both clients predict all four Ticks before authority, both Dirty sequences are e
 
 ## Task 9: Close README, architecture, verification, and evidence
 
-**Files:** update `README.md`; add `Docs/Architecture/LOCKSTEP_ARENA_V1_ARCHITECTURE.md`; append evidence only to Gate14 Architecture.
+**Files:** create `README.md`; add `Docs/Architecture/LOCKSTEP_ARENA_V1_ARCHITECTURE.md`; append evidence only to Gate14 Architecture.
 
 1. **RED documentation audit:** require README headings for prerequisites/run/demo/diagnostics/Gate0–14/limitations/TCP-only/verification and architecture Mermaid; prove missing headings before edits.
 2. Add concise commands, exact 20-step manual flow, data-flow Mermaid, ownership boundaries, known exclusions, and no unverified claims.
