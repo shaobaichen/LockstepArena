@@ -22,7 +22,8 @@ namespace LockstepArena.LivePrediction.Tests
             TestCase[] tests = Combine(
                 TcpSharedBattleSessionTests.ConstructionTests,
                 TcpSharedBattleSessionTests.PumpTests,
-                PredictedTcpClientBattleRuntimeTests.TransportTests);
+                PredictedTcpClientBattleRuntimeTests.TransportTests,
+                PredictedTcpClientBattleRuntimeTests.CoreTests);
             int failures = 0;
             for (int index = 0; index < tests.Length; index++)
             {
