@@ -827,6 +827,153 @@ implementation, and any Gate 15.
 
 ## Implementation Evidence
 
-Implementation evidence is intentionally absent from the Planning commit.
-It may be appended only after independently authorized implementation and a
-fresh successful final verification matrix.
+Fresh final verification was performed from the Gate 13 implementation HEAD
+`cd68c05902130419b854c290051e93d40bcc88e8` in the isolated Gate 13 worktree.
+The implementation history after the frozen Gate 12 baseline is:
+
+~~~text
+1987eaf1a0f0ca89c10410857842ed78b4a5c36a docs: plan Gate 13 live client prediction
+04a44f40dc97d5cf8c99b1802f23e5473f303374 docs: correct Gate 13 implementation plan verification
+6378d1a5f0e2e1ce0b2e37c93dcb3d2af247e662 feat: add shared live battle session boundary
+16393ee28be9d6730513dbe790f0a6c922f10e27 feat: fan in and broadcast shared battle authority
+7e5e27410ed9001ba82b7226c00089489e35a1b4 refactor: add transport-only client receive mode
+361725e25edaaa56831495983efeb94560c46840 feat: add bounded live client prediction
+d0ee3d9fa28dab1a3f2388f1cc524eea25dbd86b feat: retain bounded authoritative replay
+cd68c05902130419b854c290051e93d40bcc88e8 test: prove live prediction under weak network schedules
+~~~
+
+### Build and .NET execution evidence
+
+The restore-assets preflight found four embedded-package assets under their
+approved `.artifacts/obj` routing and restored nine missing existing-project
+assets without changing package or version contracts. The complete build
+matrix was then restarted from build 1. All 21 sequential Release builds
+completed with zero warnings and zero errors.
+
+Fresh execution results were:
+
+~~~text
+Gate 3  38/38
+Gate 4  32/32
+Gate 5  35/35
+Gate 6  24/24
+Gate 7  32/32
+Gate 8   8/8
+Gate 9  27/27
+Gate 10 27/27
+Gate 11 32/32
+Gate 12 36/36
+Gate 13 49/49
+Gate 3 Server Golden 89A7DD66F8D9E871
+~~~
+
+Gate 8, Gate 11, and Gate 13 ran under 90-second external process watchdogs
+and each completed normally before the bound. These watchdogs were test-runner
+containment only and added no product timeout behavior.
+
+### Gate 13 deterministic evidence
+
+The correct live prediction vector reconciled Tick 100 cleanly, retained one
+Replay frame, converged Server, authoritative client, predicted client,
+second client, and reconstructed state at Tick 101, and produced digest
+`5DB198E1CB8F8ED4`.
+
+The wrong remote prediction vector published authoritative Frames 100 through
+103 in order. Its authoritative state digests were:
+
+~~~text
+State101 A64F91C7685696AC
+State102 8763814FEEAFD898
+State103 3C3A2EFAE2A06B79
+State104 C3CAAFCE96D7F832
+~~~
+
+The predicted checkpoints were:
+
+~~~text
+pre-authority State103              8B8B6B468244E4C7
+after Dirty 100, A101/P103          EDA7579F3B1F2A20
+after prediction 103               40EADCE076E81EFD
+after Dirty 101, A102/P104          FC6C81B3C49F4B1E
+after Dirty 102, A103/P104          C3CAAFCE96D7F832
+~~~
+
+The observed Dirty sequence was `true, true, true, false`. Final Server,
+Client A authoritative, Client A predicted, Client B, and reconstructed
+Replay states all converged at Tick 104 with Slot0 `X=-300 Z=0 Aim=10103`,
+Slot1 `X=200 Z=-100 Aim=20100`, zero pending prediction, zero pending
+authority, four Replay frames, and digest `C3CAAFCE96D7F832`. The two approved
+real-loopback segmentation schedules recovered identical authoritative Domain
+Frames and final states.
+
+### Pinned Protocol regeneration evidence
+
+The environment contained no `PROTOBUF_PROTOC` or
+`Protobuf_ProtocFullPath` override. Regeneration used `Grpc.Tools 2.83.0`
+and the resolved bundled executable:
+
+~~~text
+C:\Users\张晨旭\.nuget\packages\grpc.tools\2.83.0\tools\windows_x64\protoc.exe
+libprotoc 35.1
+SHA-256 EA33FADF8FC93D8445D3F39A98E265224F53B1B5DB4196DE0B03B5724120F767
+~~~
+
+Exactly one `.proto` and one generated `.g.cs` were present. Schema and
+Generated were diff-clean after regeneration, and package-local artifact
+routing contained no LockstepArena build DLL, `bin`, or `obj` directory.
+
+### Unity execution evidence
+
+Unity 6000.3.10f1 ran four independent EditMode regressions through
+`Start-Process -Wait`, without `-quit`, and each result was accepted only from
+a newly created NUnit XML file:
+
+~~~text
+LockstepArena.Client.Prediction.Editor.Tests total=2 passed=2 failed=0
+  UnityClientPredictionGoldenTests.UnityExecutesCorrectPredictionGolden Passed
+  UnityClientPredictionGoldenTests.UnityExecutesDirtyRollbackGolden Passed
+
+LockstepArena.StreamFraming.Editor.Tests total=1 passed=1 failed=0
+  UnityStreamFramingGoldenTests.UnityExecutesApprovedAbcSegmentationGolden Passed
+
+LockstepArena.Protocol.Editor.Tests total=2 passed=2 failed=0
+  GoogleProtobufDependencyPreflightTests.RuntimeDependencyLoads Passed
+  UnityProtocolGoldenVectorTests.UnityExecutesGate5ProtocolRoundTripGoldenVector Passed
+
+LockstepArena.Simulation.Editor.Tests total=1 passed=1 failed=0
+  UnityGoldenVectorTests.UnityExecutesApprovedGoldenVector Passed
+~~~
+
+The initial no-proxy Unity import stopped before Test Runner while Package
+Manager refreshed the frozen Git dependency. A read-only proxy preflight
+succeeded, and the final four runs inherited only a process-scoped
+`GIT_CONFIG_*` HTTP proxy. Those variables were restored afterward; no
+persistent Git configuration, manifest, lockfile, URL, version, or dependency
+configuration changed. Three Unity-generated serialization changes were
+individually inspected and restored in the Gate 13 worktree.
+
+### Boundary and repository audit evidence
+
+Relative to `ff9a1a0010daecf2727096c063d62e92575259df`, committed diff was zero
+for Simulation, Protocol, StreamFraming, ClientPrediction, Server FrameSync,
+Server ProtocolAuthority, `TcpServerBattlePump.cs`, every existing Gate 3-12
+test/Golden, Assets, ProjectSettings, `Packages/manifest.json`, and
+`Packages/packages-lock.json`.
+
+The only existing production/project edits are the approved transport-only
+client receive extraction, the Client LiveTcp ClientPrediction reference, and
+the Server LiveTcp Protocol reference. The `.gitignore` diff is exactly the
+single Gate 13 test-project exception. The new Gate 13 test project has exactly
+the four approved direct ProjectReferences.
+
+Source inspection confirmed one shared `ProtocolAuthorityProcessor`, one
+client `ClientPredictionTimeline`, no second persistent prediction
+`BattleSimulation`, bounded pending authority and non-evicting Replay, and
+anti-spoof validation before authority submission. No expected Digest is in
+the actual Golden vector. No tracked build artifact, symlink, junction,
+copy/sync script, production test hook, silent input/frame replacement,
+KCP/UDP, async networking, retry/reconnect, server missing-input policy,
+client clock, interpolation, generic framework, DI, or EventBus was added.
+`git diff --check` passed, the Gate 13 worktree was clean before this
+evidence-only edit, and the ordinary checkout retained only its two protected
+user-owned modifications.
