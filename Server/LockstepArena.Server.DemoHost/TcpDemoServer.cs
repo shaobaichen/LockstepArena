@@ -25,6 +25,7 @@ namespace LockstepArena.Server.DemoHost
         private ulong _nextSessionId = 1;
         private ulong _nextRoomId = 1;
         private ulong _nextBattleId = 1;
+        private ulong _nextControlAcceptOrdinal = 1;
         private bool _disposed;
 
         public TcpDemoServer(DemoServerOptions options)
@@ -62,6 +63,7 @@ namespace LockstepArena.Server.DemoHost
             int acceptedBattle = AcceptBattleOnce();
             int processed = 0;
             ControlConnection[] connections = _controlConnections.ToArray();
+            Array.Sort(connections, CompareControlConnections);
             for (int index = 0; index < connections.Length; index++)
             {
                 ControlConnection connection = connections[index];
@@ -72,11 +74,19 @@ namespace LockstepArena.Server.DemoHost
                     if (connection.PumpRead())
                     {
                         int remaining = _options.MaxControlMessagesPerPump;
-                        while (remaining > 0 && connection.TryDequeuePayload(out byte[]? payload))
+                        while (remaining > 0 && !connection.Closed && connection.TryPeekPayload(out byte[]? payload))
                         {
-                            ProcessCommand(connection, payload!);
-                            processed++;
-                            remaining--;
+                            try
+                            {
+                                ProcessCommand(connection, payload!);
+                                connection.DequeuePayload(payload!);
+                                processed++;
+                                remaining--;
+                            }
+                            catch (ControlCapacityException)
+                            {
+                                break;
+                            }
                         }
                     }
                 }
@@ -95,6 +105,11 @@ namespace LockstepArena.Server.DemoHost
 
         internal DemoSession EnterSession(string nickname)
         {
+            return EnterSession(nickname, null);
+        }
+
+        private DemoSession EnterSession(string nickname, ControlConnection? destination)
+        {
             ThrowIfDisposed();
             string normalized = ValidateName(nickname, 32, nameof(nickname));
             if (_sessions.Count >= _options.MaxSessions) throw new InvalidOperationException("Session capacity is full.");
@@ -104,13 +119,20 @@ namespace LockstepArena.Server.DemoHost
             }
 
             ulong id = PeekNext(_nextSessionId, "Session identifiers are exhausted.");
-            var session = new DemoSession(id, normalized);
-            session.Queue(new ServerControlEventMessage
+            var session = new DemoSession(
+                id,
+                normalized,
+                _options.MaxControlPayloadLength,
+                _options.MaxPendingControlBytesPerSession);
+            var events = new ControlEventBatch(this);
+            events.Add(session, new ServerControlEventMessage
             {
                 SessionEntered = new SessionEnteredEventMessage { SessionId = id, Nickname = normalized },
-            });
+            }, destination);
+            events.Preflight();
             _sessions.Add(session);
             CommitNext(ref _nextSessionId, id);
+            events.Commit();
             return session;
         }
 
@@ -124,14 +146,18 @@ namespace LockstepArena.Server.DemoHost
             if (_rooms.Count >= _options.MaxRooms) throw new InvalidOperationException("Room capacity is full.");
             ulong id = PeekNext(_nextRoomId, "Room identifiers are exhausted.");
 
+            var room = new DemoRoom(id, normalized, sessionId, capacity, host);
+            DemoSession[] participants = { host };
+            var events = new ControlEventBatch(this);
+            AddSnapshotEvents(events, room, participants, null, false);
+            events.Preflight();
             host.RoomId = id;
             host.JoinOrdinal = 0;
             host.IsReady = false;
             host.Phase = DemoSessionPhase.InRoom;
-            var room = new DemoRoom(id, normalized, sessionId, capacity, host);
             _rooms.Add(room);
             CommitNext(ref _nextRoomId, id);
-            BroadcastSnapshot(room);
+            events.Commit();
             return room;
         }
 
@@ -166,12 +192,16 @@ namespace LockstepArena.Server.DemoHost
             if (room.IndexOf(sessionId) >= 0) throw new InvalidOperationException("Session is already in the room.");
             if (room.ParticipantCount >= room.Capacity) throw new InvalidOperationException("Room is full.");
 
+            DemoSession[] participants = AppendParticipant(room.CopyParticipants(), session);
+            var events = new ControlEventBatch(this);
+            AddSnapshotEvents(events, room, participants, null, false);
+            events.Preflight();
             session.RoomId = roomId;
             session.JoinOrdinal = room.ParticipantCount;
             session.IsReady = false;
             session.Phase = DemoSessionPhase.InRoom;
             room.Add(session);
-            BroadcastSnapshot(room);
+            events.Commit();
         }
 
         internal void SetReady(ulong sessionId, bool isReady)
@@ -181,8 +211,12 @@ namespace LockstepArena.Server.DemoHost
             RequirePhase(session, DemoSessionPhase.InRoom);
             DemoRoom room = GetRoom(session.RoomId);
             if (room.Lifecycle != DemoRoomLifecycle.Open) throw new InvalidOperationException("Room is not open.");
+            DemoSession[] participants = room.CopyParticipants();
+            var events = new ControlEventBatch(this);
+            AddSnapshotEvents(events, room, participants, session, isReady);
+            events.Preflight();
             session.IsReady = isReady;
-            BroadcastSnapshot(room);
+            events.Commit();
         }
 
         internal void LeaveRoom(ulong sessionId)
@@ -194,15 +228,20 @@ namespace LockstepArena.Server.DemoHost
             if (room.Lifecycle != DemoRoomLifecycle.Open) throw new InvalidOperationException("Room membership is frozen.");
             if (session.SessionId == room.HostSessionId)
             {
-                RemoveOpenHostRoom(room, session.SessionId);
+                RemoveOpenHostRoom(room, session.SessionId, true);
                 return;
             }
 
             int participantIndex = room.IndexOf(sessionId);
             if (participantIndex < 0) throw new InvalidOperationException("Session is not in its room.");
+            DemoSession[] survivors = RemoveParticipant(room.CopyParticipants(), participantIndex);
+            var events = new ControlEventBatch(this);
+            events.Add(session, CreateLobbyEntered());
+            AddSnapshotEvents(events, room, survivors, null, false);
+            events.Preflight();
             room.RemoveAt(participantIndex);
-            MoveToLobby(session);
-            BroadcastSnapshot(room);
+            MoveToLobbyState(session);
+            events.Commit();
         }
 
         internal BattlePreparation StartBattle(ulong sessionId)
@@ -258,15 +297,21 @@ namespace LockstepArena.Server.DemoHost
             }
 
             var preparation = new BattlePreparation(battleId, initialState, finalStateTick, participants, tickets, events);
+            var outbound = new ControlEventBatch(this);
+            for (int index = 0; index < participants.Length; index++)
+            {
+                outbound.Add(participants[index], new ServerControlEventMessage { BattlePreparing = events[index].Clone() });
+            }
+            outbound.Preflight();
             for (int index = 0; index < participants.Length; index++)
             {
                 participants[index].Phase = DemoSessionPhase.PreparingBattle;
-                participants[index].Queue(new ServerControlEventMessage { BattlePreparing = events[index].Clone() });
             }
 
             room.Preparation = preparation;
             room.Lifecycle = DemoRoomLifecycle.PreparingBattle;
             CommitNext(ref _nextBattleId, battleId);
+            outbound.Commit();
             return preparation;
         }
 
@@ -297,12 +342,11 @@ namespace LockstepArena.Server.DemoHost
             else if (session.Phase == DemoSessionPhase.InRoom)
             {
                 DemoRoom room = GetRoom(session.RoomId);
-                if (room.Lifecycle == DemoRoomLifecycle.Open && room.HostSessionId == sessionId) RemoveOpenHostRoom(room, sessionId);
+                if (room.Lifecycle == DemoRoomLifecycle.Open && room.HostSessionId == sessionId) RemoveOpenHostRoom(room, sessionId, false);
                 else if (room.Lifecycle == DemoRoomLifecycle.Open)
                 {
                     int index = room.IndexOf(sessionId);
-                    if (index >= 0) room.RemoveAt(index);
-                    BroadcastSnapshot(room);
+                    if (index >= 0) RemoveOpenParticipant(room, session, false);
                 }
             }
 
@@ -328,6 +372,7 @@ namespace LockstepArena.Server.DemoHost
         private int AcceptControlOnce()
         {
             if (_controlConnections.Count >= _options.MaxSessions || !_controlListener.Server.Poll(0, SelectMode.SelectRead)) return 0;
+            ulong acceptOrdinal = PeekNext(_nextControlAcceptOrdinal, "Control connection accept ordinals are exhausted.");
             TcpClient client = _controlListener.AcceptTcpClient();
             if (client.Client.AddressFamily != AddressFamily.InterNetwork)
             {
@@ -335,8 +380,22 @@ namespace LockstepArena.Server.DemoHost
                 return 0;
             }
 
-            _controlConnections.Add(new ControlConnection(client, _options));
+            _controlConnections.Add(new ControlConnection(client, _options, acceptOrdinal));
+            CommitNext(ref _nextControlAcceptOrdinal, acceptOrdinal);
             return 1;
+        }
+
+        private static int CompareControlConnections(ControlConnection left, ControlConnection right)
+        {
+            DemoSession? leftSession = left.Session;
+            DemoSession? rightSession = right.Session;
+            if (leftSession is null && rightSession is null)
+            {
+                return left.AcceptOrdinal.CompareTo(right.AcceptOrdinal);
+            }
+            if (leftSession is null) return -1;
+            if (rightSession is null) return 1;
+            return leftSession.SessionId.CompareTo(rightSession.SessionId);
         }
 
         private int AcceptBattleOnce()
@@ -368,18 +427,24 @@ namespace LockstepArena.Server.DemoHost
                     preparation.CommitAttachment(attachment.Slot, attachment.DetachClient());
                     if (preparation.AttachedCount == preparation.ParticipantCount)
                     {
-                        preparation.Activate(_options);
                         DemoRoom room = GetRoomForPreparation(preparation);
-                        room.Lifecycle = DemoRoomLifecycle.InBattle;
                         DemoSession[] participants = room.CopyParticipants();
+                        var events = new ControlEventBatch(this);
                         for (int participantIndex = 0; participantIndex < participants.Length; participantIndex++)
                         {
-                            participants[participantIndex].Phase = DemoSessionPhase.InBattle;
-                            participants[participantIndex].Queue(new ServerControlEventMessage
+                            events.Add(participants[participantIndex], new ServerControlEventMessage
                             {
                                 BattleStarted = new BattleStartedEventMessage { BattleId = preparation.BattleId },
                             });
                         }
+                        events.Preflight();
+                        preparation.Activate(_options);
+                        room.Lifecycle = DemoRoomLifecycle.InBattle;
+                        for (int participantIndex = 0; participantIndex < participants.Length; participantIndex++)
+                        {
+                            participants[participantIndex].Phase = DemoSessionPhase.InBattle;
+                        }
+                        events.Commit();
                     }
                 }
                 catch
@@ -431,12 +496,13 @@ namespace LockstepArena.Server.DemoHost
             return published;
         }
 
-        private static void QueueBattleStatus(DemoRoom room, ulong battleId, uint stateTick, uint nextPublishTick)
+        private void QueueBattleStatus(DemoRoom room, ulong battleId, uint stateTick, uint nextPublishTick)
         {
             DemoSession[] participants = room.CopyParticipants();
+            var events = new ControlEventBatch(this);
             for (int index = 0; index < participants.Length; index++)
             {
-                participants[index].Queue(new ServerControlEventMessage
+                events.Add(participants[index], new ServerControlEventMessage
                 {
                     BattleStatus = new BattleStatusEventMessage
                     {
@@ -446,9 +512,11 @@ namespace LockstepArena.Server.DemoHost
                     },
                 });
             }
+            events.Preflight();
+            events.Commit();
         }
 
-        private static void CompleteBattle(DemoRoom room, BattleState state)
+        private void CompleteBattle(DemoRoom room, BattleState state)
         {
             BattlePreparation preparation = room.Preparation ?? throw new InvalidOperationException("Battle preparation is missing.");
             var finalState = new FinalBattleStateMessage
@@ -471,12 +539,10 @@ namespace LockstepArena.Server.DemoHost
             }
 
             DemoSession[] participants = room.CopyParticipants();
-            room.Lifecycle = DemoRoomLifecycle.Settled;
-            preparation.Invalidate();
+            var events = new ControlEventBatch(this);
             for (int index = 0; index < participants.Length; index++)
             {
-                participants[index].Phase = DemoSessionPhase.Settlement;
-                participants[index].Queue(new ServerControlEventMessage
+                events.Add(participants[index], new ServerControlEventMessage
                 {
                     BattleSettlement = new BattleSettlementEventMessage
                     {
@@ -486,6 +552,14 @@ namespace LockstepArena.Server.DemoHost
                     },
                 });
             }
+            events.Preflight();
+            room.Lifecycle = DemoRoomLifecycle.Settled;
+            preparation.Invalidate();
+            for (int index = 0; index < participants.Length; index++)
+            {
+                participants[index].Phase = DemoSessionPhase.Settlement;
+            }
+            events.Commit();
         }
 
         private bool TryReserveTicket(byte[] ticket, out BattlePreparation? preparation, out PlayerSlot slot)
@@ -513,25 +587,13 @@ namespace LockstepArena.Server.DemoHost
         private void AbortRoom(DemoRoom room, string detail)
         {
             BattlePreparation? preparation = room.Preparation;
-            preparation?.Invalidate();
-            for (int index = _battleAttachments.Count - 1; index >= 0; index--)
-            {
-                if (ReferenceEquals(_battleAttachments[index].Preparation, preparation))
-                {
-                    _battleAttachments[index].Dispose();
-                    _battleAttachments.RemoveAt(index);
-                }
-            }
-
             DemoSession[] participants = room.CopyParticipants();
-            room.Lifecycle = DemoRoomLifecycle.Removed;
-            _rooms.Remove(room);
+            var events = new ControlEventBatch(this);
             for (int index = 0; index < participants.Length; index++)
             {
                 DemoSession session = participants[index];
                 if (session.Phase == DemoSessionPhase.Closed) continue;
-                session.Phase = DemoSessionPhase.Settlement;
-                session.Queue(new ServerControlEventMessage
+                events.Add(session, new ServerControlEventMessage
                 {
                     BattleSettlement = new BattleSettlementEventMessage
                     {
@@ -541,6 +603,25 @@ namespace LockstepArena.Server.DemoHost
                     },
                 });
             }
+            events.Preflight();
+            preparation?.Invalidate();
+            for (int index = _battleAttachments.Count - 1; index >= 0; index--)
+            {
+                if (ReferenceEquals(_battleAttachments[index].Preparation, preparation))
+                {
+                    _battleAttachments[index].Dispose();
+                    _battleAttachments.RemoveAt(index);
+                }
+            }
+            room.Lifecycle = DemoRoomLifecycle.Removed;
+            _rooms.Remove(room);
+            for (int index = 0; index < participants.Length; index++)
+            {
+                DemoSession session = participants[index];
+                if (session.Phase == DemoSessionPhase.Closed) continue;
+                session.Phase = DemoSessionPhase.Settlement;
+            }
+            events.Commit();
         }
 
         private void ProcessCommand(ControlConnection connection, byte[] payload)
@@ -553,10 +634,10 @@ namespace LockstepArena.Server.DemoHost
                 {
                     case ClientControlCommandMessage.CommandOneofCase.EnterSession:
                         if (connection.Session is not null) throw new InvalidOperationException("Session was already entered.");
-                        connection.Session = EnterSession(command.EnterSession.Nickname);
+                        connection.Session = EnterSession(command.EnterSession.Nickname, connection);
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.RequestRoomList:
-                        RequireNamed(connection).Queue(new ServerControlEventMessage { RoomList = CreateRoomList() });
+                        QueueSessionEvent(RequireNamed(connection), new ServerControlEventMessage { RoomList = CreateRoomList() });
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.CreateRoom:
                         DemoSession creator = RequireNamed(connection);
@@ -587,6 +668,10 @@ namespace LockstepArena.Server.DemoHost
                         throw new InvalidDataException("Unknown control command.");
                 }
             }
+            catch (ControlCapacityException)
+            {
+                throw;
+            }
             catch (ArgumentException exception)
             {
                 QueueRejection(connection, ControlRejectReasonMessage.ControlRejectReasonInvalidValue, exception.Message);
@@ -604,7 +689,11 @@ namespace LockstepArena.Server.DemoHost
                 ControlConnection connection = _controlConnections[index];
                 DemoSession? session = connection.Session;
                 if (connection.Closed || session is null) continue;
-                while (session.TryDequeueEvent(out ServerControlEventMessage? message)) connection.Queue(message!);
+                while (session.TryPeekEvent(out PendingControlEvent? candidate))
+                {
+                    if (!connection.TryQueue(candidate!.FramedBytes)) break;
+                    session.DequeueEvent(candidate);
+                }
             }
         }
 
@@ -656,34 +745,44 @@ namespace LockstepArena.Server.DemoHost
             StartBattle(starter.SessionId);
         }
 
-        private static void QueueRejection(ControlConnection connection, ControlRejectReasonMessage reason, string detail)
+        private void QueueRejection(ControlConnection connection, ControlRejectReasonMessage reason, string detail)
         {
             if (connection.Session is null) throw new InvalidDataException(detail);
-            connection.Session.Queue(new ServerControlEventMessage
+            QueueSessionEvent(connection.Session, new ServerControlEventMessage
             {
                 CommandRejected = new CommandRejectedEventMessage { Reason = reason, Detail = detail },
             });
         }
 
-        private void RemoveOpenHostRoom(DemoRoom room, ulong hostSessionId)
+        private void RemoveOpenHostRoom(DemoRoom room, ulong hostSessionId, bool notifyHost)
         {
             DemoSession[] participants = room.CopyParticipants();
+            var events = new ControlEventBatch(this);
+            for (int index = 0; index < participants.Length; index++)
+            {
+                DemoSession participant = participants[index];
+                if (participant.Phase == DemoSessionPhase.Closed || (!notifyHost && participant.SessionId == hostSessionId)) continue;
+                events.Add(participant, new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() });
+            }
+            events.Preflight();
             room.Lifecycle = DemoRoomLifecycle.Removed;
             _rooms.Remove(room);
             for (int index = 0; index < participants.Length; index++)
             {
-                if (participants[index].SessionId != hostSessionId && participants[index].Phase != DemoSessionPhase.Closed) MoveToLobby(participants[index]);
+                if (participants[index].Phase != DemoSessionPhase.Closed) MoveToLobbyState(participants[index]);
             }
-
-            DemoSession host = GetSession(hostSessionId);
-            MoveToLobby(host);
+            events.Commit();
         }
 
         private void ReturnSettledSession(DemoSession session)
         {
             RequirePhase(session, DemoSessionPhase.Settlement);
+            var events = new ControlEventBatch(this);
+            events.Add(session, new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() });
+            events.Preflight();
             RemoveSettledParticipant(session);
-            MoveToLobby(session);
+            MoveToLobbyState(session);
+            events.Commit();
         }
 
         private void RemoveSettledParticipant(DemoSession session)
@@ -700,13 +799,12 @@ namespace LockstepArena.Server.DemoHost
             }
         }
 
-        private static void MoveToLobby(DemoSession session)
+        private static void MoveToLobbyState(DemoSession session)
         {
             session.RoomId = 0;
             session.JoinOrdinal = 0;
             session.IsReady = false;
             session.Phase = DemoSessionPhase.Lobby;
-            session.Queue(new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() });
         }
 
         private static string ValidateName(string value, int maximumUtf8Bytes, string parameterName)
@@ -748,7 +846,32 @@ namespace LockstepArena.Server.DemoHost
             if (session.Phase != phase) throw new InvalidOperationException("Command is invalid for the current session phase.");
         }
 
-        private static RoomSnapshotEventMessage CreateSnapshot(DemoRoom room)
+        private static DemoSession[] AppendParticipant(DemoSession[] participants, DemoSession participant)
+        {
+            var result = new DemoSession[participants.Length + 1];
+            Array.Copy(participants, result, participants.Length);
+            result[result.Length - 1] = participant;
+            return result;
+        }
+
+        private static DemoSession[] RemoveParticipant(DemoSession[] participants, int removeIndex)
+        {
+            var result = new DemoSession[participants.Length - 1];
+            if (removeIndex > 0) Array.Copy(participants, 0, result, 0, removeIndex);
+            if (removeIndex < result.Length) Array.Copy(participants, removeIndex + 1, result, removeIndex, result.Length - removeIndex);
+            return result;
+        }
+
+        private static ServerControlEventMessage CreateLobbyEntered()
+        {
+            return new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() };
+        }
+
+        private static RoomSnapshotEventMessage CreateSnapshot(
+            DemoRoom room,
+            DemoSession[] participants,
+            DemoSession? readyOverride,
+            bool readyValue)
         {
             var message = new RoomSnapshotEventMessage
             {
@@ -758,31 +881,130 @@ namespace LockstepArena.Server.DemoHost
                 Capacity = checked((uint)room.Capacity),
                 Lifecycle = ServerControlProtocol.ToWire(room.Lifecycle),
             };
-            for (int index = 0; index < room.ParticipantCount; index++)
+            for (int index = 0; index < participants.Length; index++)
             {
-                DemoSession participant = room.GetParticipant(index);
+                DemoSession participant = participants[index];
                 message.Participants.Add(new RoomParticipantMessage
                 {
                     SessionId = participant.SessionId,
                     Nickname = participant.Nickname,
                     IsHost = participant.SessionId == room.HostSessionId,
-                    IsReady = participant.IsReady,
-                    JoinOrdinal = checked((uint)participant.JoinOrdinal),
+                    IsReady = ReferenceEquals(participant, readyOverride) ? readyValue : participant.IsReady,
+                    JoinOrdinal = checked((uint)index),
                 });
             }
 
             return message;
         }
 
-        private static void BroadcastSnapshot(DemoRoom room)
+        private static void AddSnapshotEvents(
+            ControlEventBatch events,
+            DemoRoom room,
+            DemoSession[] participants,
+            DemoSession? readyOverride,
+            bool readyValue)
         {
-            RoomSnapshotEventMessage candidate = CreateSnapshot(room);
-            for (int index = 0; index < room.ParticipantCount; index++) room.GetParticipant(index).Queue(new ServerControlEventMessage { RoomSnapshot = candidate.Clone() });
+            RoomSnapshotEventMessage candidate = CreateSnapshot(room, participants, readyOverride, readyValue);
+            for (int index = 0; index < participants.Length; index++)
+            {
+                events.Add(participants[index], new ServerControlEventMessage { RoomSnapshot = candidate.Clone() });
+            }
+        }
+
+        private void QueueSessionEvent(DemoSession session, ServerControlEventMessage message)
+        {
+            var events = new ControlEventBatch(this);
+            events.Add(session, message);
+            events.Preflight();
+            events.Commit();
+        }
+
+        private void RemoveOpenParticipant(DemoRoom room, DemoSession session, bool notifyLeaving)
+        {
+            int participantIndex = room.IndexOf(session.SessionId);
+            if (participantIndex < 0) throw new InvalidOperationException("Session is not in its room.");
+            DemoSession[] survivors = RemoveParticipant(room.CopyParticipants(), participantIndex);
+            var events = new ControlEventBatch(this);
+            if (notifyLeaving) events.Add(session, CreateLobbyEntered());
+            AddSnapshotEvents(events, room, survivors, null, false);
+            events.Preflight();
+            room.RemoveAt(participantIndex);
+            if (notifyLeaving) MoveToLobbyState(session);
+            events.Commit();
+        }
+
+        private ControlConnection? FindControlConnection(DemoSession session)
+        {
+            for (int index = 0; index < _controlConnections.Count; index++)
+            {
+                ControlConnection candidate = _controlConnections[index];
+                if (!candidate.Closed && ReferenceEquals(candidate.Session, session)) return candidate;
+            }
+            return null;
         }
 
         private void ThrowIfDisposed()
         {
             if (_disposed) throw new ObjectDisposedException(nameof(TcpDemoServer));
+        }
+
+        private sealed class ControlEventBatch
+        {
+            private readonly TcpDemoServer _server;
+            private readonly List<ControlEventEntry> _entries = new List<ControlEventEntry>();
+
+            internal ControlEventBatch(TcpDemoServer server)
+            {
+                _server = server;
+            }
+
+            internal void Add(DemoSession session, ServerControlEventMessage message, ControlConnection? destination = null)
+            {
+                _entries.Add(new ControlEventEntry(session, session.Prepare(message), destination));
+            }
+
+            internal void Preflight()
+            {
+                for (int index = 0; index < _entries.Count; index++)
+                {
+                    DemoSession session = _entries[index].Session;
+                    bool first = true;
+                    long additionalBytes = 0;
+                    ControlConnection? destination = _entries[index].Destination;
+                    for (int other = 0; other < _entries.Count; other++)
+                    {
+                        if (!ReferenceEquals(_entries[other].Session, session)) continue;
+                        if (other < index) first = false;
+                        additionalBytes = checked(additionalBytes + _entries[other].Event.FramedBytes.Length);
+                        destination ??= _entries[other].Destination;
+                    }
+                    if (!first) continue;
+                    destination ??= _server.FindControlConnection(session);
+                    session.EnsureCapacity(additionalBytes, destination?.PendingBytes ?? 0);
+                }
+            }
+
+            internal void Commit()
+            {
+                for (int index = 0; index < _entries.Count; index++)
+                {
+                    _entries[index].Session.Commit(_entries[index].Event);
+                }
+            }
+        }
+
+        private sealed class ControlEventEntry
+        {
+            internal ControlEventEntry(DemoSession session, PendingControlEvent @event, ControlConnection? destination)
+            {
+                Session = session;
+                Event = @event;
+                Destination = destination;
+            }
+
+            internal DemoSession Session { get; }
+            internal PendingControlEvent Event { get; }
+            internal ControlConnection? Destination { get; }
         }
 
         private sealed class ControlConnection : IDisposable
@@ -793,7 +1015,6 @@ namespace LockstepArena.Server.DemoHost
             private readonly byte[] _receiveBuffer;
             private readonly int _receiveOffset;
             private readonly int _receiveCapacity;
-            private readonly int _maxPayloadLength;
             private readonly int _maxPendingBytes;
             private readonly Queue<byte[]> _incoming = new Queue<byte[]>();
             private readonly Queue<byte[]> _outgoing = new Queue<byte[]>();
@@ -801,7 +1022,7 @@ namespace LockstepArena.Server.DemoHost
             private int _sendOffset;
             private int _pendingBytes;
 
-            internal ControlConnection(TcpClient client, DemoServerOptions options)
+            internal ControlConnection(TcpClient client, DemoServerOptions options, ulong acceptOrdinal)
             {
                 _client = client;
                 _stream = client.GetStream();
@@ -809,11 +1030,13 @@ namespace LockstepArena.Server.DemoHost
                 _receiveBuffer = new byte[options.ControlReceiveBufferLength];
                 _receiveOffset = options.ControlReceiveOffset;
                 _receiveCapacity = options.ControlReceiveReadCapacity;
-                _maxPayloadLength = options.MaxControlPayloadLength;
                 _maxPendingBytes = options.MaxPendingControlBytesPerSession;
+                AcceptOrdinal = acceptOrdinal;
             }
 
             internal DemoSession? Session { get; set; }
+            internal ulong AcceptOrdinal { get; }
+            internal int PendingBytes => _pendingBytes;
             internal bool Closed { get; private set; }
 
             internal void PumpSend(int maximumBytes)
@@ -848,23 +1071,32 @@ namespace LockstepArena.Server.DemoHost
                 return true;
             }
 
-            internal bool TryDequeuePayload(out byte[]? payload)
+            internal bool TryPeekPayload(out byte[]? payload)
             {
                 if (_incoming.Count == 0)
                 {
                     payload = null;
                     return false;
                 }
-                payload = _incoming.Dequeue();
+                payload = _incoming.Peek();
                 return true;
             }
 
-            internal void Queue(ServerControlEventMessage message)
+            internal void DequeuePayload(byte[] payload)
             {
-                byte[] framed = LengthPrefixedFrameEncoder.Encode(message.ToByteArray(), _maxPayloadLength);
-                if ((long)_pendingBytes + framed.Length > _maxPendingBytes) throw new InvalidOperationException("Pending control send capacity is full.");
+                if (_incoming.Count == 0 || !ReferenceEquals(_incoming.Peek(), payload))
+                {
+                    throw new InvalidOperationException("The control payload is not at the queue head.");
+                }
+                _incoming.Dequeue();
+            }
+
+            internal bool TryQueue(byte[] framed)
+            {
+                if ((long)_pendingBytes + framed.Length > _maxPendingBytes) return false;
                 _outgoing.Enqueue(framed);
                 _pendingBytes += framed.Length;
+                return true;
             }
 
             public void Dispose()

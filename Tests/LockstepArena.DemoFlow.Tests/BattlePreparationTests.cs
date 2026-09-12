@@ -1,6 +1,9 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
+using LockstepArena.Client.Demo;
+using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.DemoHost;
 using LockstepArena.Simulation;
 
@@ -57,11 +60,20 @@ namespace LockstepArena.DemoFlow.Tests
 
         private static void StartAtomicallyFreezesRosterBootstrapTicketsAndEvents()
         {
-            using var server = FullRoom(out DemoSession host, out DemoSession guest, out DemoRoom room);
+            using var server = FullRoom(out DemoSession host, out DemoSession guest, out DemoRoom room, 1028);
             server.SetReady(host.SessionId, true);
             server.SetReady(guest.SessionId, true);
             host.ClearEvents();
             guest.ClearEvents();
+            SessionRoomTests.FillControlCapacity(host);
+            int retainedHostEvents = host.EventCount;
+            TestAssert.Throws<InvalidOperationException>(() => server.StartBattle(host.SessionId));
+            TestAssert.Equal(DemoRoomLifecycle.Open, room.Lifecycle);
+            TestAssert.True(host.IsReady);
+            TestAssert.True(guest.IsReady);
+            TestAssert.Equal(retainedHostEvents, host.EventCount);
+            TestAssert.Equal(0, guest.EventCount);
+            host.ClearEvents();
             BattlePreparation preparation = server.StartBattle(host.SessionId);
             TestAssert.Equal(DemoRoomLifecycle.PreparingBattle, room.Lifecycle);
             TestAssert.Equal((ulong)1, preparation.BattleId);
@@ -208,11 +220,110 @@ namespace LockstepArena.DemoFlow.Tests
             DemoServerPumpResult result = fixture.Server.PumpOnce();
             TestAssert.True(result.AcceptedBattleConnections <= 1);
             TestAssert.True(result.AcceptedControlConnections <= 1);
+
+            ProveControlAndBattleConnectProgressThroughPump();
+            ProveNamedSessionsUseSessionIdOrder();
         }
 
-        private static TcpDemoServer FullRoom(out DemoSession host, out DemoSession guest, out DemoRoom room)
+        private static void ProveControlAndBattleConnectProgressThroughPump()
         {
-            TcpDemoServer server = SessionRoomTests.CreateServer();
+            using var server = SessionRoomTests.CreateServer(maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2, controlReceiveReadCapacity: 64);
+            using var host = CreateClient(server.ControlPort);
+            using var guest = CreateClient(server.ControlPort);
+            ConnectAndEnter(server, host, "Host");
+            ConnectAndEnter(server, guest, "Guest");
+            host.CreateRoom("Room", 2);
+            PumpUntil(server, host, guest, () => host.Phase == DemoClientPhase.Room);
+            guest.JoinRoom(host.Snapshot.RoomId);
+            PumpUntil(server, host, guest, () => guest.Phase == DemoClientPhase.Room);
+            host.SetReady(true);
+            guest.SetReady(true);
+            Pump(server, host, guest, 40);
+            host.StartBattle();
+            PumpUntil(server, host, guest, () => host.Phase == DemoClientPhase.PreparingBattle);
+            TestAssert.True(GetPrivateField<NetworkStream>(host, "_battleStream") is null);
+            TestAssert.True(GetPrivateField<TcpClient>(host, "_battleClient") is not null);
+            for (int index = 0; index < 40 && GetPrivateField<NetworkStream>(host, "_battleStream") is null; index++)
+            {
+                host.PumpOnce(null);
+            }
+            TestAssert.True(GetPrivateField<NetworkStream>(host, "_battleStream") is not null);
+        }
+
+        private static void ProveNamedSessionsUseSessionIdOrder()
+        {
+            using var server = SessionRoomTests.CreateServer(maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2, controlReceiveReadCapacity: 64);
+            using var acceptedFirst = CreateClient(server.ControlPort);
+            using var acceptedSecond = CreateClient(server.ControlPort);
+
+            acceptedFirst.BeginConnect();
+            TestAssert.Equal(DemoClientPhase.ConnectingControl, acceptedFirst.Phase);
+            PumpUntil(server, acceptedFirst, null, () => acceptedFirst.Phase == DemoClientPhase.AwaitingSessionEntry);
+            acceptedSecond.BeginConnect();
+            TestAssert.Equal(DemoClientPhase.ConnectingControl, acceptedSecond.Phase);
+            PumpUntil(server, acceptedSecond, null, () => acceptedSecond.Phase == DemoClientPhase.AwaitingSessionEntry);
+
+            acceptedSecond.EnterSession("SessionOne");
+            PumpUntil(server, acceptedFirst, acceptedSecond, () => acceptedSecond.Phase == DemoClientPhase.Lobby);
+            acceptedFirst.EnterSession("SessionTwo");
+            PumpUntil(server, acceptedFirst, acceptedSecond, () => acceptedFirst.Phase == DemoClientPhase.Lobby);
+            TestAssert.Equal((ulong)1, acceptedSecond.Snapshot.SessionId);
+            TestAssert.Equal((ulong)2, acceptedFirst.Snapshot.SessionId);
+
+            acceptedFirst.CreateRoom("WrongFirst", 2);
+            acceptedSecond.CreateRoom("CorrectFirst", 2);
+            acceptedFirst.PumpOnce(null);
+            acceptedSecond.PumpOnce(null);
+            for (int index = 0; index < 20 && server.RoomCount == 0; index++) server.PumpOnce();
+            TestAssert.Equal((ulong)1, server.GetRoom(1).HostSessionId);
+        }
+
+        private static TcpDemoClient CreateClient(int controlPort)
+        {
+            return new TcpDemoClient(new DemoClientOptions(controlPort, 1024, 2048, 128, 3, 64, 4, 64, 4, 4, 8, 16, 1024, 32, 3, 8));
+        }
+
+        private static void ConnectAndEnter(TcpDemoServer server, TcpDemoClient client, string nickname)
+        {
+            client.BeginConnect();
+            TestAssert.Equal(DemoClientPhase.ConnectingControl, client.Phase);
+            PumpUntil(server, client, null, () => client.Phase == DemoClientPhase.AwaitingSessionEntry);
+            client.EnterSession(nickname);
+            PumpUntil(server, client, null, () => client.Phase == DemoClientPhase.Lobby);
+        }
+
+        private static void PumpUntil(TcpDemoServer server, TcpDemoClient first, TcpDemoClient? second, Func<bool> condition)
+        {
+            for (int index = 0; index < 2000 && !condition(); index++)
+            {
+                server.PumpOnce();
+                first.PumpOnce(null);
+                second?.PumpOnce(null);
+            }
+            TestAssert.True(condition());
+        }
+
+        private static void Pump(TcpDemoServer server, TcpDemoClient first, TcpDemoClient second, int count)
+        {
+            for (int index = 0; index < count; index++)
+            {
+                server.PumpOnce();
+                first.PumpOnce(null);
+                second.PumpOnce(null);
+            }
+        }
+
+        private static T? GetPrivateField<T>(TcpDemoClient client, string name)
+            where T : class
+        {
+            FieldInfo field = typeof(TcpDemoClient).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException($"Missing field {name}.");
+            return field.GetValue(client) as T;
+        }
+
+        private static TcpDemoServer FullRoom(out DemoSession host, out DemoSession guest, out DemoRoom room, int maxPendingControlBytesPerSession = 2048)
+        {
+            TcpDemoServer server = SessionRoomTests.CreateServer(maxPendingControlBytesPerSession: maxPendingControlBytesPerSession);
             host = server.EnterSession("Host");
             guest = server.EnterSession("Guest");
             room = server.CreateRoom(host.SessionId, "Room", 2);

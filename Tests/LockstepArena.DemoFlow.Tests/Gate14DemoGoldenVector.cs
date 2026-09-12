@@ -252,6 +252,7 @@ namespace LockstepArena.DemoFlow.Tests
         private static void EnterLobby(TcpDemoClient client, string nickname, TcpDemoServer server)
         {
             client.BeginConnect();
+            PumpUntil(() => client.Phase == DemoClientPhase.AwaitingSessionEntry, server, client);
             client.EnterSession(nickname);
             PumpUntil(() => client.Phase == DemoClientPhase.Lobby, server, client);
         }

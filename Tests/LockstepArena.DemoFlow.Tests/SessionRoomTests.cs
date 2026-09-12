@@ -44,6 +44,8 @@ namespace LockstepArena.DemoFlow.Tests
             using var server = CreateServer();
             using var client = new TcpDemoClient(new DemoClientOptions(server.ControlPort, 1024, 2048, 32, 3, 8, 4, 64, 4, 4, 8, 16, 1024, 32, 3, 8));
             client.BeginConnect();
+            TestAssert.Equal(DemoClientPhase.ConnectingControl, client.Phase);
+            PumpUntil(server, client, DemoClientPhase.AwaitingSessionEntry);
             client.EnterSession("NetworkAlpha");
             TestAssert.Equal(DemoClientPhase.AwaitingSessionEntry, client.Phase);
             for (int index = 0; index < 200 && client.Phase != DemoClientPhase.Lobby; index++)
@@ -178,12 +180,20 @@ namespace LockstepArena.DemoFlow.Tests
 
         private static void JoinAppendsStableJoinOrderAndBroadcastsSnapshot()
         {
-            using var server = CreateServer();
+            using var server = CreateServer(maxPendingControlBytesPerSession: 1028);
             DemoSession host = server.EnterSession("Host");
             DemoSession guest = server.EnterSession("Guest");
             DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
             host.ClearEvents();
             guest.ClearEvents();
+            FillControlCapacity(host);
+            int retainedHostEvents = host.EventCount;
+            TestAssert.Throws<InvalidOperationException>(() => server.JoinRoom(guest.SessionId, room.RoomId));
+            TestAssert.Equal(1, room.ParticipantCount);
+            TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
+            TestAssert.Equal(retainedHostEvents, host.EventCount);
+            TestAssert.Equal(0, guest.EventCount);
+            host.ClearEvents();
             server.JoinRoom(guest.SessionId, room.RoomId);
             TestAssert.Equal(guest.SessionId, room.GetParticipant(1).SessionId);
             TestAssert.Equal(1, room.GetParticipant(1).JoinOrdinal);
@@ -208,13 +218,20 @@ namespace LockstepArena.DemoFlow.Tests
 
         private static void ReadyAndUnreadyBroadcastAtomicRoomSnapshots()
         {
-            using var server = CreateServer();
+            using var server = CreateServer(maxPendingControlBytesPerSession: 1028);
             DemoSession host = server.EnterSession("Host");
             DemoSession guest = server.EnterSession("Guest");
             DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
             server.JoinRoom(guest.SessionId, room.RoomId);
             host.ClearEvents();
             guest.ClearEvents();
+            FillControlCapacity(host);
+            int retainedHostEvents = host.EventCount;
+            TestAssert.Throws<InvalidOperationException>(() => server.SetReady(guest.SessionId, true));
+            TestAssert.True(!room.GetParticipant(1).IsReady);
+            TestAssert.Equal(retainedHostEvents, host.EventCount);
+            TestAssert.Equal(0, guest.EventCount);
+            host.ClearEvents();
             server.SetReady(guest.SessionId, true);
             TestAssert.True(room.GetParticipant(1).IsReady);
             TestAssert.True(host.LastEvent.RoomSnapshot.Participants[1].IsReady);
@@ -251,14 +268,26 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.Equal(ServerControlEventMessage.EventOneofCase.LobbyEntered, guest.LastEvent.EventCase);
         }
 
-        internal static TcpDemoServer CreateServer(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4)
+        internal static TcpDemoServer CreateServer(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8)
         {
-            return new TcpDemoServer(CreateOptions(maxSessions, maxRooms, maxRoomCapacity));
+            return new TcpDemoServer(CreateOptions(maxSessions, maxRooms, maxRoomCapacity, maxPendingControlBytesPerSession, controlReceiveReadCapacity));
         }
 
-        internal static DemoServerOptions CreateOptions(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4)
+        internal static DemoServerOptions CreateOptions(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8)
         {
-            return new DemoServerOptions(0, 0, maxSessions, maxRooms, maxRoomCapacity, SpawnStates(maxRoomCapacity), 2, 8, 8, 4, 1024, 2048, 32, 3, 8, 4, 64, 1024, 32, 3, 8);
+            return new DemoServerOptions(0, 0, maxSessions, maxRooms, maxRoomCapacity, SpawnStates(maxRoomCapacity), 2, 8, 8, 4, 1024, maxPendingControlBytesPerSession, 128, 3, controlReceiveReadCapacity, 4, 64, 1024, 32, 3, 8);
+        }
+
+        internal static void FillControlCapacity(DemoSession session)
+        {
+            session.Queue(new ServerControlEventMessage
+            {
+                CommandRejected = new CommandRejectedEventMessage
+                {
+                    Reason = ControlRejectReasonMessage.ControlRejectReasonResourceLimit,
+                    Detail = new string('x', 990),
+                },
+            });
         }
 
         private static PlayerState[] SpawnStates(int count)

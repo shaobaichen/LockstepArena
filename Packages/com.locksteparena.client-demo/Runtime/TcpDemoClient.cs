@@ -42,6 +42,7 @@ namespace LockstepArena.Client.Demo
         private int _ticketSendOffset;
         private bool _battleAccepted;
         private bool _battleStarted;
+        private bool _battleAttachmentInitiatedThisPump;
         private PredictedTcpClientBattleRuntime? _battleRuntime;
         private uint _finalInputTick;
         private uint _finalStateTick;
@@ -107,11 +108,7 @@ namespace LockstepArena.Client.Demo
             _phase = DemoClientPhase.ConnectingControl;
             try
             {
-                var client = new TcpClient(AddressFamily.InterNetwork);
-                client.Connect(IPAddress.Loopback, _options.ControlPort);
-                _client = client;
-                _stream = client.GetStream();
-                _phase = DemoClientPhase.AwaitingSessionEntry;
+                _client = BeginLoopbackConnect(_options.ControlPort);
             }
             catch
             {
@@ -183,6 +180,17 @@ namespace LockstepArena.Client.Demo
             ThrowIfUnavailable();
             try
             {
+                if (_phase == DemoClientPhase.ConnectingControl)
+                {
+                    if (TryCompleteConnect(_client ?? throw new InvalidOperationException("Control client is missing."), out NetworkStream? stream))
+                    {
+                        _stream = stream;
+                        _phase = DemoClientPhase.AwaitingSessionEntry;
+                    }
+                    return new DemoClientPumpResult(0, 0, 0, false);
+                }
+
+                _battleAttachmentInitiatedThisPump = false;
                 int sent = PumpSend();
                 if (_exitRequested && _pendingControlBytes == 0)
                 {
@@ -190,7 +198,7 @@ namespace LockstepArena.Client.Demo
                     return new DemoClientPumpResult(sent, 0, 0, false);
                 }
                 int processed = PumpReceive();
-                ProgressBattleAttachment();
+                if (!_battleAttachmentInitiatedThisPump) ProgressBattleAttachment();
                 int authority = 0;
                 bool prediction = false;
                 if (_battleRuntime is not null &&
@@ -350,24 +358,17 @@ namespace LockstepArena.Client.Demo
             var localId = new PlayerId(preparing.LocalPlayerId);
             var localSlot = new PlayerSlot(checked((int)preparing.LocalPlayerSlot));
             BattleState initialState = ProtocolMapper.ToDomainBattleBootstrap(preparing.Bootstrap, localId, localSlot);
-            var battleClient = new TcpClient(AddressFamily.InterNetwork);
-            try
-            {
-                battleClient.Connect(IPAddress.Loopback, checked((int)preparing.BattlePort));
-                _battleClient = battleClient;
-                _battleStream = battleClient.GetStream();
-            }
-            catch
-            {
-                battleClient.Dispose();
-                throw;
-            }
+            uint finalStateTick = preparing.Bootstrap.FinalStateTick;
+            if (finalStateTick == 0U) throw new InvalidDataException("Final battle Tick must be positive.");
+            TcpClient battleClient = BeginLoopbackConnect(checked((int)preparing.BattlePort));
+            _battleClient = battleClient;
+            _battleStream = null;
+            _battleAttachmentInitiatedThisPump = true;
             _preparing = preparing.Clone();
             _battleInitialState = initialState;
             _battleRoster = FormatBattleRoster(initialState.Roster);
             _battleId = preparing.BattleId;
-            _finalStateTick = preparing.Bootstrap.FinalStateTick;
-            if (_finalStateTick == 0U) throw new InvalidDataException("Final battle Tick must be positive.");
+            _finalStateTick = finalStateTick;
             _finalInputTick = _finalStateTick - 1U;
             _serverStateTick = initialState.Tick;
             _nextPublishTick = initialState.Tick;
@@ -386,7 +387,12 @@ namespace LockstepArena.Client.Demo
 
         private void ProgressBattleAttachment()
         {
-            if (_battleClient is null || _battleStream is null || _preparing is null || _battleRuntime is not null) return;
+            if (_battleClient is null || _preparing is null || _battleRuntime is not null) return;
+            if (_battleStream is null)
+            {
+                if (TryCompleteConnect(_battleClient, out NetworkStream? stream)) _battleStream = stream;
+                return;
+            }
             if (_ticketSendOffset < 16)
             {
                 if (!_battleClient.Client.Poll(0, SelectMode.SelectWrite)) return;
@@ -404,6 +410,51 @@ namespace LockstepArena.Client.Demo
                 _battleAccepted = true;
                 TryActivateBattleRuntime();
             }
+        }
+
+        private static TcpClient BeginLoopbackConnect(int port)
+        {
+            var client = new TcpClient(AddressFamily.InterNetwork);
+            try
+            {
+                client.Client.Blocking = false;
+                try
+                {
+                    client.Connect(IPAddress.Loopback, port);
+                }
+                catch (SocketException exception) when (IsConnectInProgress(exception.SocketErrorCode))
+                {
+                }
+                return client;
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
+        }
+
+        private static bool TryCompleteConnect(TcpClient client, out NetworkStream? stream)
+        {
+            Socket socket = client.Client;
+            if (!socket.Poll(0, SelectMode.SelectWrite) && !socket.Poll(0, SelectMode.SelectError))
+            {
+                stream = null;
+                return false;
+            }
+
+            int error = (int)socket.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Error);
+            if (error != 0) throw new SocketException(error);
+            socket.Blocking = true;
+            stream = client.GetStream();
+            return true;
+        }
+
+        private static bool IsConnectInProgress(SocketError error)
+        {
+            return error == SocketError.WouldBlock ||
+                error == SocketError.InProgress ||
+                error == SocketError.AlreadyInProgress;
         }
 
         private void TryActivateBattleRuntime()
