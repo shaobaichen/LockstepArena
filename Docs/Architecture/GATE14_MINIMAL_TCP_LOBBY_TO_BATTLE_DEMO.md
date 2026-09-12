@@ -531,3 +531,37 @@ Relative to Gate 13, Shared Simulation, ClientPrediction, StreamFraming, Server 
 Package audit forbids `bin`, `obj`, LockstepArena build DLLs, symlink/junction, sync/copy scripts, duplicate generated code, or duplicate Gate 13 runtime.
 
 Excluded from v1: MySQL/persistence/accounts/passwords, chat, matchmaking, room passwords/invites/spectators/host migration, KCP/UDP/transport switching, reconnect/resume/heartbeat/retry, TLS/certificates/NAT/public deployment/clustering, adaptive delay, timeout neutral/repeat-last input, server prediction, another rollback/Snapshot/Replay system, interpolation/gameplay view framework, combat/damage/scoring/winners/rewards/currency/ranking/inventory, ECS, generic networking/session framework, DI/EventBus/middleware/router/plugin registry, and Gate 15.
+
+## 12. Implementation Evidence
+
+Fresh Gate 14 verification was completed on 2026-09-12 from the isolated `codex/gate14-v1-demo-closure` worktree. The implementation checkpoint immediately before this evidence update was `58e4e9afabcbd94ec4f807dee6bbe5c0019229ff`.
+
+### Build and automated execution
+
+- All 24 frozen Release builds completed sequentially with `0 warnings / 0 errors`.
+- Dependency-free .NET suites passed: Gate3 `38/38`, Gate4 `32/32`, Gate5 `35/35`, Gate6 `24/24`, Gate7 `32/32`, Gate8 `8/8`, Gate9 `27/27`, Gate10 `27/27`, Gate11 `32/32`, Gate12 `36/36`, Gate13 `49/49`, and Gate14 `48/48`.
+- The Server Golden completed at Tick 1000 with four players and digest `89A7DD66F8D9E871`.
+- The real-TCP Gates 8, 11, 13, and 14 completed under the external bounded watchdog; no product timeout was added.
+- A final focused Gate14 execution after the manual run again reported `RESULT 48/48 passed`.
+
+### Deterministic v1 Golden
+
+The actual-only Gate14 vector completed the nickname/session, room, Ready/Start, ticketed BATTLE attachment, Gate13 predicted live runtime, settlement, ReturnToLobby, and Exit flow. Both clients produced Dirty `[true,true,true,true]`; server, authoritative client states, predicted client states, and Replay converged at State Tick 4 and digest `D8E54FF828A4C670`. The frozen intermediate digests remained `D08BA63E403C71AF`, `F82D3BE4A98024B5`, `A4DAA5FBE7E940ED`, `7A653646579E6AEC`, and `D8E54FF828A4C670`.
+
+### Unity execution
+
+Unity `6000.3.10f1` produced fresh NUnit XML for every required assembly. Gate14 Demo reported `3/3`, Gate12 Prediction `2/2`, Gate7 StreamFraming `1/1`, Gate5 Protocol `2/2`, and the Gate3 named Golden `1/1`; every required named test was `Passed` with zero failures. Process exit codes were not used as the test oracle. Each run's exact worktree-local serialization diff was inspected and individually restored. The Windows Player was built from the dedicated Gate14 scene at `.artifacts/Gate14DemoPlayer/LockstepArenaDemo.exe`.
+
+### Manual Player plus Editor acceptance
+
+One Windows Player (`Bravo`) and one Editor client (`Alpha`) used the real loopback DemoHost on CONTROL `46000` and BATTLE `46001`. The observed flow covered room creation/join, host and participant presentation, both Ready states, host Start, frozen `Slot0/PlayerId2` and `Slot1/PlayerId1`, both Gate13 battle clients, four Dirty reconciliations, settlement at Tick 4 with both digests `D8E54FF828A4C670` and `SettlementVerified=True`, Return of both sessions, refreshed `Rooms=[]`, Exit of both clients, and normal server stop. The operator did not separately capture the transient `NOT_HOST` and `NOT_READY` strings; their exact no-mutation rejection contracts remain covered by Gate14 automated tests `StartRejectsNonHostWithoutMutation` and `StartRejectsAnyUnreadyParticipantWithoutMutation`.
+
+### Protocol and repository audits
+
+- Pinned regeneration used Grpc.Tools `2.83.0` and bundled `protoc` `libprotoc 35.1` at `C:\Users\张晨旭\.nuget\packages\grpc.tools\2.83.0\tools\windows_x64\protoc.exe`; no `PROTOBUF_PROTOC` or `Protobuf_ProtocFullPath` override was present.
+- Exactly one `.proto` and one tracked `.g.cs` remained. Generated-source SHA-256 was unchanged at `786B1454EEC2DC1DF1F9B263904833EC96FBC2114B70F0CEAE309F2A285B33D5`, and schema/generated regeneration diff was clean.
+- Relative to frozen Gate13 baseline `57243ae82ff87a5f51dc86d34342d697963b34dc`, protected Simulation, ClientPrediction, StreamFraming, Server FrameSync, ProtocolAuthority, Server LiveTcp, ProjectSettings, manifest, and pre-existing tests had zero committed diff.
+- The two migrated Gate13 client runtime blobs matched their originals exactly, the old paths were absent, and only one physical copy of each source existed.
+- Package manifests and the two embedded lockfile entries matched their declared dependency graphs. `.gitignore` added exactly the three approved authored-project exceptions.
+- No package-local `bin`, `obj`, or LockstepArena build DLL existed. No Git symlink, filesystem junction/reparse point, copy/sync script, duplicate generated source, or disallowed Gate14 Task/Thread/async/KCP/UDP/MySQL/DI/EventBus dependency was found.
+- `git diff --check` passed. The isolated worktree contained no Unity recovery or nested-project artifacts after exact cleanup. The ordinary checkout retained only the user-owned `Assets/Settings/Mobile_RPAsset.asset` and `ProjectSettings/ShaderGraphSettings.asset` modifications.
