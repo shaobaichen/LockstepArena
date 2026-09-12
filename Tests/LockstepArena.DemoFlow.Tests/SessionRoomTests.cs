@@ -69,7 +69,7 @@ namespace LockstepArena.DemoFlow.Tests
                 client.PumpOnce(null);
             }
             TestAssert.Equal(DemoClientPhase.Room, client.Phase);
-            TestAssert.True(client.Snapshot.LastRejection.Length > 0);
+            TestAssert.Equal("NOT_READY", client.Snapshot.LastRejection);
 
             client.LeaveRoom();
             TestAssert.Equal(DemoClientPhase.Room, client.Phase);

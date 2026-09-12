@@ -276,6 +276,14 @@ namespace LockstepArena.DemoFlow.Tests
             acceptedSecond.PumpOnce(null);
             for (int index = 0; index < 20 && server.RoomCount == 0; index++) server.PumpOnce();
             TestAssert.Equal((ulong)1, server.GetRoom(1).HostSessionId);
+
+            PumpUntil(server, acceptedFirst, acceptedSecond, () => acceptedSecond.Phase == DemoClientPhase.Room);
+            acceptedFirst.JoinRoom(1);
+            PumpUntil(server, acceptedFirst, acceptedSecond, () => acceptedFirst.Phase == DemoClientPhase.Room);
+            acceptedFirst.StartBattle();
+            PumpUntil(server, acceptedFirst, acceptedSecond, () => acceptedFirst.Snapshot.LastRejection == "NOT_HOST");
+            acceptedSecond.StartBattle();
+            PumpUntil(server, acceptedFirst, acceptedSecond, () => acceptedSecond.Snapshot.LastRejection == "NOT_READY");
         }
 
         private static TcpDemoClient CreateClient(int controlPort)

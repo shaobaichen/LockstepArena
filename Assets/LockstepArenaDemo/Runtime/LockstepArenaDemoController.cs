@@ -73,6 +73,7 @@ namespace LockstepArena.Demo
             if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
             return $"Phase={snapshot.Phase} Session={snapshot.SessionId} Room={snapshot.RoomId} Battle={snapshot.BattleId} " +
                 $"Rooms=[{snapshot.RoomList}] Participants=[{snapshot.RoomParticipants}] Roster=[{snapshot.BattleRoster}] " +
+                $"Rejection={snapshot.LastRejection} " +
                 $"ServerTick={snapshot.ServerStateTick} NextPublishTick={snapshot.NextPublishTick} " +
                 $"AuthorityTick={snapshot.AuthoritativeTick} PredictedTick={snapshot.PredictedTick} " +
                 $"PendingPredictions={snapshot.PendingPredictionCount} PendingAuthority={snapshot.PendingAuthoritativeFrameCount} " +

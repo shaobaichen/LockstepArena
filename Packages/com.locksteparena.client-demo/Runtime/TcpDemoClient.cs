@@ -330,7 +330,7 @@ namespace LockstepArena.Client.Demo
                     ReceiveSettlement(message.BattleSettlement);
                     break;
                 case ServerControlEventMessage.EventOneofCase.CommandRejected:
-                    _lastRejection = message.CommandRejected.Reason.ToString();
+                    _lastRejection = FormatRejection(message.CommandRejected.Reason);
                     break;
                 case ServerControlEventMessage.EventOneofCase.LobbyEntered:
                     ClearRoomAndBattlePresentation();
@@ -346,6 +346,16 @@ namespace LockstepArena.Client.Demo
                 default:
                     throw new InvalidDataException("Control event union is missing.");
             }
+        }
+
+        private static string FormatRejection(ControlRejectReasonMessage reason)
+        {
+            return reason switch
+            {
+                ControlRejectReasonMessage.ControlRejectReasonNotHost => "NOT_HOST",
+                ControlRejectReasonMessage.ControlRejectReasonNotReady => "NOT_READY",
+                _ => reason.ToString(),
+            };
         }
 
         private void BeginBattleAttachment(BattlePreparingEventMessage preparing)
