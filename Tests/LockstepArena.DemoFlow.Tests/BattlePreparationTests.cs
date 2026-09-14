@@ -200,8 +200,40 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.True(fixture.Preparation.IsInvalidated);
             TestAssert.Equal(0, fixture.Server.RoomCount);
 
+            ProveUnpressuredPhysicalControlLossReturnsSurvivorToLobby();
             ProvePressuredPhysicalControlLoss(false);
             ProvePressuredPhysicalControlLoss(true);
+        }
+
+        private static void ProveUnpressuredPhysicalControlLossReturnsSurvivorToLobby()
+        {
+            using var server = SessionRoomTests.CreateServer();
+            using TcpClient hostControl = SessionRoomTests.ConnectNamed(server, "PhysicalHost", 1);
+            using TcpClient guestControl = SessionRoomTests.ConnectNamed(server, "PhysicalGuest", 2);
+            DemoSession host = server.GetSession(1);
+            DemoSession guest = server.GetSession(2);
+            DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
+            server.JoinRoom(guest.SessionId, room.RoomId);
+            server.SetReady(host.SessionId, true);
+            server.SetReady(guest.SessionId, true);
+            BattlePreparation preparation = server.StartBattle(host.SessionId);
+            using TcpClient battle = ConnectBattle(server, preparation.GetTicket(new PlayerSlot(0)));
+
+            hostControl.Client.Shutdown(SocketShutdown.Both);
+            for (int index = 0; index < 100 && host.Phase != DemoSessionPhase.Closed; index++) server.PumpOnce();
+            TestAssert.True(preparation.IsInvalidated);
+            TestAssert.Equal(0, server.RoomCount);
+            TestAssert.Equal(DemoSessionPhase.Settlement, guest.Phase);
+            TestAssert.Equal(0UL, guest.RoomId);
+
+            SessionRoomTests.WriteCommand(guestControl, new ClientControlCommandMessage
+            {
+                ReturnToLobby = new ReturnToLobbyCommandMessage(),
+            });
+            for (int index = 0; index < 100 && guest.Phase != DemoSessionPhase.Lobby; index++) server.PumpOnce();
+            TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
+            TestAssert.Equal(0UL, guest.RoomId);
+            TestAssert.Equal(1, server.SessionCount);
         }
 
         private static void ProvePressuredPhysicalControlLoss(bool enterBattle)

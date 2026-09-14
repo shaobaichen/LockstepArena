@@ -335,7 +335,7 @@ namespace LockstepArena.Server.DemoHost
             }
             else if (session.Phase == DemoSessionPhase.Settlement)
             {
-                RemoveSettledParticipant(session);
+                if (session.RoomId != 0) RemoveSettledParticipant(session);
             }
             else if (session.Phase == DemoSessionPhase.InRoom)
             {
@@ -601,6 +601,9 @@ namespace LockstepArena.Server.DemoHost
             {
                 DemoSession session = participants[index];
                 if (session.Phase == DemoSessionPhase.Closed) continue;
+                session.RoomId = 0;
+                session.JoinOrdinal = 0;
+                session.IsReady = false;
                 session.Phase = DemoSessionPhase.Settlement;
                 if (ReferenceEquals(session, disconnected)) continue;
                 TryNotifyAfterCleanup(session, new ServerControlEventMessage
@@ -807,7 +810,7 @@ namespace LockstepArena.Server.DemoHost
             var events = new ControlEventBatch(this);
             events.Add(session, new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() });
             events.Preflight();
-            RemoveSettledParticipant(session);
+            if (session.RoomId != 0) RemoveSettledParticipant(session);
             MoveToLobbyState(session);
             events.Commit();
         }

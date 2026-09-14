@@ -12,6 +12,7 @@ using LockstepArena.Protocol;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.DemoHost;
 using LockstepArena.Simulation;
+using LockstepArena.StreamFraming;
 
 namespace LockstepArena.DemoFlow.Tests
 {
@@ -125,15 +126,79 @@ namespace LockstepArena.DemoFlow.Tests
 
         private static void BattleFailureAbortsRoomAndNotifiesSurvivingControls()
         {
-            using var fixture = new BattlePreparationTests.PreparedFixture();
-            using TcpClient first = fixture.Attach(fixture.Preparation.GetTicket(new PlayerSlot(0)));
-            using TcpClient second = fixture.Attach(fixture.Preparation.GetTicket(new PlayerSlot(1)));
+            using var server = SessionRoomTests.CreateServer();
+            using TcpClient hostControl = SessionRoomTests.ConnectNamed(server, "Host", 1);
+            using TcpClient guestControl = SessionRoomTests.ConnectNamed(server, "Guest", 2);
+            DemoSession host = server.GetSession(1);
+            DemoSession guest = server.GetSession(2);
+            DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
+            server.JoinRoom(guest.SessionId, room.RoomId);
+            server.SetReady(host.SessionId, true);
+            server.SetReady(guest.SessionId, true);
+            BattlePreparation preparation = server.StartBattle(host.SessionId);
+            using TcpClient first = AttachBattle(server, preparation.GetTicket(new PlayerSlot(0)));
+            using TcpClient second = AttachBattle(server, preparation.GetTicket(new PlayerSlot(1)));
+            var decoder = new LengthPrefixedFrameDecoder(1024);
+            var received = new List<ServerControlEventMessage>();
+            ReadAvailableControlEvents(guestControl, decoder, received);
             first.Client.Shutdown(SocketShutdown.Both);
             first.Dispose();
-            for (int index = 0; index < 100 && fixture.Server.RoomCount > 0; index++) fixture.Server.PumpOnce();
-            TestAssert.Equal(0, fixture.Server.RoomCount);
-            TestAssert.True(fixture.Preparation.IsInvalidated);
-            TestAssert.Equal(BattleSettlementReasonMessage.BattleSettlementReasonAborted, fixture.Guest.LastEvent.BattleSettlement.Reason);
+            for (int index = 0; index < 100 && server.RoomCount > 0; index++) server.PumpOnce();
+            TestAssert.Equal(0, server.RoomCount);
+            TestAssert.True(preparation.IsInvalidated);
+            TestAssert.Equal(DemoSessionPhase.Settlement, guest.Phase);
+            for (int index = 0; index < 100; index++) server.PumpOnce();
+            ReadAvailableControlEvents(guestControl, decoder, received);
+            TestAssert.True(received.Exists(message =>
+                message.EventCase == ServerControlEventMessage.EventOneofCase.BattleSettlement &&
+                message.BattleSettlement.Reason == BattleSettlementReasonMessage.BattleSettlementReasonAborted));
+            received.Clear();
+
+            SessionRoomTests.WriteCommand(guestControl, new ClientControlCommandMessage
+            {
+                ReturnToLobby = new ReturnToLobbyCommandMessage(),
+            });
+            for (int index = 0; index < 100 && guest.Phase != DemoSessionPhase.Lobby; index++) server.PumpOnce();
+            TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
+            TestAssert.Equal(0UL, guest.RoomId);
+            for (int index = 0; index < 100; index++) server.PumpOnce();
+            ReadAvailableControlEvents(guestControl, decoder, received);
+            TestAssert.True(received.Exists(message => message.EventCase == ServerControlEventMessage.EventOneofCase.LobbyEntered));
+            received.Clear();
+
+            SessionRoomTests.WriteCommand(guestControl, new ClientControlCommandMessage
+            {
+                RequestRoomList = new RequestRoomListCommandMessage(),
+            });
+            for (int index = 0; index < 100; index++) server.PumpOnce();
+            ReadAvailableControlEvents(guestControl, decoder, received);
+            TestAssert.True(received.Exists(message =>
+                message.EventCase == ServerControlEventMessage.EventOneofCase.RoomList &&
+                message.RoomList.Rooms.Count == 0));
+            TestAssert.Equal(0, server.RoomCount);
+        }
+
+        private static TcpClient AttachBattle(TcpDemoServer server, byte[] ticket)
+        {
+            var client = new TcpClient(AddressFamily.InterNetwork);
+            client.Connect(IPAddress.Loopback, server.BattlePort);
+            client.GetStream().Write(ticket, 0, ticket.Length);
+            for (int index = 0; index < 30; index++) server.PumpOnce();
+            return client;
+        }
+
+        private static void ReadAvailableControlEvents(
+            TcpClient client,
+            LengthPrefixedFrameDecoder decoder,
+            List<ServerControlEventMessage> received)
+        {
+            var buffer = new byte[128];
+            while (client.Client.Available > 0)
+            {
+                int count = client.GetStream().Read(buffer, 0, buffer.Length);
+                foreach (byte[] payload in decoder.Feed(buffer, 0, count))
+                    received.Add(ServerControlEventMessage.Parser.ParseFrom(payload));
+            }
         }
 
         private static BattleState CreateState(uint tick)
