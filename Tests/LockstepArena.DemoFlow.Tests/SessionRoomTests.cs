@@ -1,9 +1,13 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
+using Google.Protobuf;
 using LockstepArena.Client.Demo;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.DemoHost;
 using LockstepArena.Simulation;
+using LockstepArena.StreamFraming;
 
 namespace LockstepArena.DemoFlow.Tests
 {
@@ -266,16 +270,52 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.Equal(0, server.RoomCount);
             TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
             TestAssert.Equal(ServerControlEventMessage.EventOneofCase.LobbyEntered, guest.LastEvent.EventCase);
+
+            using var pressuredServer = CreateServer(maxPendingControlBytesPerSession: 1028, controlReceiveReadCapacity: 64);
+            using TcpClient physicalHost = ConnectNamed(pressuredServer, "PhysicalHost", 1);
+            using TcpClient physicalGuest = ConnectNamed(pressuredServer, "PhysicalGuest", 2);
+            DemoSession lostHost = pressuredServer.GetSession(1);
+            DemoSession pressuredGuest = pressuredServer.GetSession(2);
+            pressuredServer.CreateRoom(lostHost.SessionId, "PhysicalRoom", 2);
+            pressuredServer.JoinRoom(pressuredGuest.SessionId, 1);
+            pressuredGuest.ClearEvents();
+            FillControlCapacity(pressuredGuest);
+            physicalHost.Client.Shutdown(SocketShutdown.Both);
+            for (int index = 0; index < 20 && lostHost.Phase != DemoSessionPhase.Closed; index++) pressuredServer.PumpOnce();
+            TestAssert.Equal(0, pressuredServer.RoomCount);
+            TestAssert.Equal(DemoSessionPhase.Closed, lostHost.Phase);
+            TestAssert.Equal(DemoSessionPhase.Closed, pressuredGuest.Phase);
+            TestAssert.Equal(0, pressuredServer.SessionCount);
         }
 
-        internal static TcpDemoServer CreateServer(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8)
+        internal static TcpClient ConnectNamed(TcpDemoServer server, string nickname, int expectedSessionCount)
         {
-            return new TcpDemoServer(CreateOptions(maxSessions, maxRooms, maxRoomCapacity, maxPendingControlBytesPerSession, controlReceiveReadCapacity));
+            var client = new TcpClient(AddressFamily.InterNetwork);
+            client.Connect(IPAddress.Loopback, server.ControlPort);
+            for (int index = 0; index < 20; index++) server.PumpOnce();
+            WriteCommand(client, new ClientControlCommandMessage
+            {
+                EnterSession = new EnterSessionCommandMessage { Nickname = nickname },
+            });
+            for (int index = 0; index < 100 && server.SessionCount < expectedSessionCount; index++) server.PumpOnce();
+            TestAssert.Equal(expectedSessionCount, server.SessionCount);
+            return client;
         }
 
-        internal static DemoServerOptions CreateOptions(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8)
+        internal static void WriteCommand(TcpClient client, ClientControlCommandMessage command)
         {
-            return new DemoServerOptions(0, 0, maxSessions, maxRooms, maxRoomCapacity, SpawnStates(maxRoomCapacity), 2, 8, 8, 4, 1024, maxPendingControlBytesPerSession, 128, 3, controlReceiveReadCapacity, 4, 64, 1024, 32, 3, 8);
+            byte[] framed = LengthPrefixedFrameEncoder.Encode(command.ToByteArray(), 1024);
+            client.GetStream().Write(framed, 0, framed.Length);
+        }
+
+        internal static TcpDemoServer CreateServer(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8, int maxControlSendBytesPerPump = 64)
+        {
+            return new TcpDemoServer(CreateOptions(maxSessions, maxRooms, maxRoomCapacity, maxPendingControlBytesPerSession, controlReceiveReadCapacity, maxControlSendBytesPerPump));
+        }
+
+        internal static DemoServerOptions CreateOptions(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8, int maxControlSendBytesPerPump = 64)
+        {
+            return new DemoServerOptions(0, 0, maxSessions, maxRooms, maxRoomCapacity, SpawnStates(maxRoomCapacity), 2, 8, 8, 4, 1024, maxPendingControlBytesPerSession, 128, 3, controlReceiveReadCapacity, 4, maxControlSendBytesPerPump, 1024, 32, 3, 8);
         }
 
         internal static void FillControlCapacity(DemoSession session)

@@ -6,6 +6,7 @@ using LockstepArena.Client.Demo;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.DemoHost;
 using LockstepArena.Simulation;
+using LockstepArena.StreamFraming;
 
 namespace LockstepArena.DemoFlow.Tests
 {
@@ -198,6 +199,61 @@ namespace LockstepArena.DemoFlow.Tests
             fixture.Server.CloseSession(fixture.Host.SessionId);
             TestAssert.True(fixture.Preparation.IsInvalidated);
             TestAssert.Equal(0, fixture.Server.RoomCount);
+
+            ProvePressuredPhysicalControlLoss(false);
+            ProvePressuredPhysicalControlLoss(true);
+        }
+
+        private static void ProvePressuredPhysicalControlLoss(bool enterBattle)
+        {
+            using var server = SessionRoomTests.CreateServer(maxPendingControlBytesPerSession: 1028, controlReceiveReadCapacity: 64);
+            using TcpClient hostControl = SessionRoomTests.ConnectNamed(server, "PhysicalHost", 1);
+            using TcpClient guestControl = SessionRoomTests.ConnectNamed(server, "PhysicalGuest", 2);
+            DemoSession host = server.GetSession(1);
+            DemoSession guest = server.GetSession(2);
+            DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
+            server.JoinRoom(guest.SessionId, room.RoomId);
+            server.SetReady(host.SessionId, true);
+            server.SetReady(guest.SessionId, true);
+            BattlePreparation preparation = server.StartBattle(host.SessionId);
+            using TcpClient first = ConnectBattle(server, preparation.GetTicket(new PlayerSlot(0)));
+            TcpClient? second = null;
+            try
+            {
+                if (enterBattle)
+                {
+                    second = ConnectBattle(server, preparation.GetTicket(new PlayerSlot(1)));
+                    for (int index = 0; index < 40 && room.Lifecycle != DemoRoomLifecycle.InBattle; index++) server.PumpOnce();
+                    TestAssert.Equal(DemoRoomLifecycle.InBattle, room.Lifecycle);
+                }
+                else
+                {
+                    TestAssert.Equal(DemoRoomLifecycle.PreparingBattle, room.Lifecycle);
+                }
+
+                guest.ClearEvents();
+                SessionRoomTests.FillControlCapacity(guest);
+                hostControl.Client.Shutdown(SocketShutdown.Both);
+                for (int index = 0; index < 20 && host.Phase != DemoSessionPhase.Closed; index++) server.PumpOnce();
+                TestAssert.True(preparation.IsInvalidated);
+                TestAssert.Equal(0, server.RoomCount);
+                TestAssert.Equal(DemoSessionPhase.Closed, host.Phase);
+                TestAssert.Equal(DemoSessionPhase.Closed, guest.Phase);
+                TestAssert.Equal(0, server.SessionCount);
+            }
+            finally
+            {
+                second?.Dispose();
+            }
+        }
+
+        private static TcpClient ConnectBattle(TcpDemoServer server, byte[] ticket)
+        {
+            var client = new TcpClient(AddressFamily.InterNetwork);
+            client.Connect(IPAddress.Loopback, server.BattlePort);
+            client.GetStream().Write(ticket, 0, ticket.Length);
+            for (int index = 0; index < 40; index++) server.PumpOnce();
+            return client;
         }
 
         private static void AllAttachmentsCreateExactlyOneGate13SharedBattleSession()
@@ -223,6 +279,57 @@ namespace LockstepArena.DemoFlow.Tests
 
             ProveControlAndBattleConnectProgressThroughPump();
             ProveNamedSessionsUseSessionIdOrder();
+            ProveBufferedControlRetryWithoutNewBytes();
+        }
+
+        private static void ProveBufferedControlRetryWithoutNewBytes()
+        {
+            using var server = SessionRoomTests.CreateServer(maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2,
+                maxPendingControlBytesPerSession: 1028, controlReceiveReadCapacity: 64, maxControlSendBytesPerPump: 1);
+            using TcpClient client = SessionRoomTests.ConnectNamed(server, "BufferedHost", 1);
+            DemoSession session = server.GetSession(1);
+            session.ClearEvents();
+            session.Queue(new ServerControlEventMessage
+            {
+                CommandRejected = new CommandRejectedEventMessage
+                {
+                    Reason = ControlRejectReasonMessage.ControlRejectReasonResourceLimit,
+                    Detail = new string('x', 1000),
+                },
+            });
+            SessionRoomTests.WriteCommand(client, new ClientControlCommandMessage
+            {
+                CreateRoom = new CreateRoomCommandMessage { RoomName = "BufferedRoom", Capacity = 2 },
+            });
+            for (int index = 0; index < 5; index++) server.PumpOnce();
+            TestAssert.Equal(0, server.RoomCount);
+            int processed = 0;
+            for (int index = 0; index < 2000 && server.RoomCount == 0; index++)
+            {
+                processed += server.PumpOnce().ProcessedControlCommands;
+            }
+            TestAssert.Equal(1, processed);
+            TestAssert.Equal(1, server.RoomCount);
+            TestAssert.Equal(DemoSessionPhase.InRoom, session.Phase);
+            TestAssert.Equal((ulong)1, session.RoomId);
+            var decoder = new LengthPrefixedFrameDecoder(1024);
+            var receive = new byte[128];
+            int roomSnapshots = 0;
+            for (int index = 0; index < 2000 && roomSnapshots == 0; index++)
+            {
+                server.PumpOnce();
+                if (client.Client.Available == 0) continue;
+                int read = client.GetStream().Read(receive, 0, receive.Length);
+                foreach (byte[] payload in decoder.Feed(receive, 0, read))
+                {
+                    ServerControlEventMessage message = ServerControlEventMessage.Parser.ParseFrom(payload);
+                    if (message.EventCase != ServerControlEventMessage.EventOneofCase.RoomSnapshot) continue;
+                    roomSnapshots++;
+                    TestAssert.Equal((ulong)1, message.RoomSnapshot.RoomId);
+                    TestAssert.Equal(1, message.RoomSnapshot.Participants.Count);
+                }
+            }
+            TestAssert.Equal(1, roomSnapshots);
         }
 
         private static void ProveControlAndBattleConnectProgressThroughPump()

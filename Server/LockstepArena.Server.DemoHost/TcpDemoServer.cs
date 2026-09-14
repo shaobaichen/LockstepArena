@@ -71,22 +71,20 @@ namespace LockstepArena.Server.DemoHost
                 try
                 {
                     connection.PumpSend(_options.MaxControlSendBytesPerPump);
-                    if (connection.PumpRead())
+                    connection.PumpRead();
+                    int remaining = _options.MaxControlMessagesPerPump;
+                    while (remaining > 0 && !connection.Closed && connection.TryPeekPayload(out byte[]? payload))
                     {
-                        int remaining = _options.MaxControlMessagesPerPump;
-                        while (remaining > 0 && !connection.Closed && connection.TryPeekPayload(out byte[]? payload))
+                        try
                         {
-                            try
-                            {
-                                ProcessCommand(connection, payload!);
-                                connection.DequeuePayload(payload!);
-                                processed++;
-                                remaining--;
-                            }
-                            catch (ControlCapacityException)
-                            {
-                                break;
-                            }
+                            ProcessCommand(connection, payload!);
+                            connection.DequeuePayload(payload!);
+                            processed++;
+                            remaining--;
+                        }
+                        catch (ControlCapacityException)
+                        {
+                            break;
                         }
                     }
                 }
@@ -333,7 +331,7 @@ namespace LockstepArena.Server.DemoHost
             DemoSession session = GetSession(sessionId);
             if (session.Phase == DemoSessionPhase.PreparingBattle || session.Phase == DemoSessionPhase.InBattle)
             {
-                AbortRoom(GetRoom(session.RoomId), "A participant control connection ended.");
+                AbortRoom(GetRoom(session.RoomId), "A participant control connection ended.", session);
             }
             else if (session.Phase == DemoSessionPhase.Settlement)
             {
@@ -584,26 +582,10 @@ namespace LockstepArena.Server.DemoHost
             throw new InvalidOperationException("Preparation no longer belongs to an active room.");
         }
 
-        private void AbortRoom(DemoRoom room, string detail)
+        private void AbortRoom(DemoRoom room, string detail, DemoSession? disconnected = null)
         {
             BattlePreparation? preparation = room.Preparation;
             DemoSession[] participants = room.CopyParticipants();
-            var events = new ControlEventBatch(this);
-            for (int index = 0; index < participants.Length; index++)
-            {
-                DemoSession session = participants[index];
-                if (session.Phase == DemoSessionPhase.Closed) continue;
-                events.Add(session, new ServerControlEventMessage
-                {
-                    BattleSettlement = new BattleSettlementEventMessage
-                    {
-                        BattleId = preparation?.BattleId ?? 0,
-                        Reason = BattleSettlementReasonMessage.BattleSettlementReasonAborted,
-                        Detail = detail,
-                    },
-                });
-            }
-            events.Preflight();
             preparation?.Invalidate();
             for (int index = _battleAttachments.Count - 1; index >= 0; index--)
             {
@@ -620,8 +602,17 @@ namespace LockstepArena.Server.DemoHost
                 DemoSession session = participants[index];
                 if (session.Phase == DemoSessionPhase.Closed) continue;
                 session.Phase = DemoSessionPhase.Settlement;
+                if (ReferenceEquals(session, disconnected)) continue;
+                TryNotifyAfterCleanup(session, new ServerControlEventMessage
+                {
+                    BattleSettlement = new BattleSettlementEventMessage
+                    {
+                        BattleId = preparation?.BattleId ?? 0,
+                        Reason = BattleSettlementReasonMessage.BattleSettlementReasonAborted,
+                        Detail = detail,
+                    },
+                });
             }
-            events.Commit();
         }
 
         private void ProcessCommand(ControlConnection connection, byte[] payload)
@@ -757,21 +748,57 @@ namespace LockstepArena.Server.DemoHost
         private void RemoveOpenHostRoom(DemoRoom room, ulong hostSessionId, bool notifyHost)
         {
             DemoSession[] participants = room.CopyParticipants();
-            var events = new ControlEventBatch(this);
-            for (int index = 0; index < participants.Length; index++)
+            ControlEventBatch? events = null;
+            if (notifyHost)
             {
-                DemoSession participant = participants[index];
-                if (participant.Phase == DemoSessionPhase.Closed || (!notifyHost && participant.SessionId == hostSessionId)) continue;
-                events.Add(participant, new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() });
+                events = new ControlEventBatch(this);
+                for (int index = 0; index < participants.Length; index++)
+                {
+                    DemoSession participant = participants[index];
+                    if (participant.Phase != DemoSessionPhase.Closed) events.Add(participant, CreateLobbyEntered());
+                }
+                events.Preflight();
             }
-            events.Preflight();
             room.Lifecycle = DemoRoomLifecycle.Removed;
             _rooms.Remove(room);
             for (int index = 0; index < participants.Length; index++)
             {
                 if (participants[index].Phase != DemoSessionPhase.Closed) MoveToLobbyState(participants[index]);
             }
-            events.Commit();
+            if (notifyHost) events!.Commit();
+            else
+            {
+                for (int index = 0; index < participants.Length; index++)
+                {
+                    DemoSession participant = participants[index];
+                    if (participant.Phase != DemoSessionPhase.Closed && participant.SessionId != hostSessionId)
+                    {
+                        TryNotifyAfterCleanup(participant, CreateLobbyEntered());
+                    }
+                }
+            }
+        }
+
+        private void TryNotifyAfterCleanup(DemoSession session, ServerControlEventMessage message)
+        {
+            try
+            {
+                var events = new ControlEventBatch(this);
+                events.Add(session, message);
+                events.Preflight();
+                events.Commit();
+            }
+            catch (ControlCapacityException)
+            {
+                ControlConnection? connection = FindControlConnection(session);
+                if (connection is not null)
+                {
+                    connection.Dispose();
+                    _controlConnections.Remove(connection);
+                }
+                session.Phase = DemoSessionPhase.Closed;
+                _sessions.Remove(session);
+            }
         }
 
         private void ReturnSettledSession(DemoSession session)
