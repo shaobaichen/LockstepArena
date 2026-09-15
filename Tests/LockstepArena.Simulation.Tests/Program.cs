@@ -12,6 +12,7 @@ namespace LockstepArena.Simulation.Tests
                 GameplayContractTests.All,
                 FrameCollectionTests.All,
                 BattleSimulationTests.All,
+                GameplaySimulationTests.All,
                 DeterminismTests.All);
             int failures = 0;
 
