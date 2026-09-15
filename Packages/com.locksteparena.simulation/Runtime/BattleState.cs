@@ -119,6 +119,10 @@ namespace LockstepArena.Simulation
             for (int index = 0; index < _players.Length; index++) _players[index] = statesInSlotOrder[index];
             _projectiles = new ProjectileState[projectiles.Count];
             for (int index = 0; index < _projectiles.Length; index++) _projectiles[index] = projectiles[index];
+            Array.Sort(_projectiles, (left, right) => left.ProjectileId.CompareTo(right.ProjectileId));
+            for (int index = 1; index < _projectiles.Length; index++)
+                if (_projectiles[index - 1].ProjectileId == _projectiles[index].ProjectileId)
+                    throw new ArgumentException("Projectile ids must be unique.", nameof(projectiles));
         }
 
         public PlayerState GetPlayerState(PlayerSlot slot)

@@ -16,6 +16,8 @@ namespace LockstepArena.Simulation.Tests
             new TestCase(nameof(GoldenDigestLocksVariableRosterFieldAndByteOrder), GoldenDigestLocksVariableRosterFieldAndByteOrder),
             new TestCase(nameof(FourPlayerTwinSimulationsMatchDigestAtEveryTick), FourPlayerTwinSimulationsMatchDigestAtEveryTick),
             new TestCase(nameof(InitialStateAndThreePlayerFrameHistoryRebuildFinalDigest), InitialStateAndThreePlayerFrameHistoryRebuildFinalDigest),
+            new TestCase(nameof(GameplayDigestCoversStateAndDefinition), GameplayDigestCoversStateAndDefinition),
+            new TestCase(nameof(GameplayStateComparerUsesStructuralValues), GameplayStateComparerUsesStructuralValues),
         };
 
         private static void EqualVariablePlayerStatesHaveEqualDigests()
@@ -175,6 +177,57 @@ namespace LockstepArena.Simulation.Tests
 
             TestAssert.Equal((uint)HistoryTickCount, rebuilt.State.Tick);
             TestAssert.Equal(StateDigest.Compute(original.State), StateDigest.Compute(rebuilt.State));
+        }
+
+        private static void GameplayDigestCoversStateAndDefinition()
+        {
+            BattleState baseline = GameplayState();
+            BattleState[] changed =
+            {
+                GameplayState(secondHitPoints: 99),
+                GameplayState(firstCooldown: 1),
+                GameplayState(phase: BattlePhase.RoundEnded),
+                GameplayState(roundTicks: 49),
+                GameplayState(projectileX: 11),
+                GameplayState(nextProjectileId: 3),
+                GameplayState(projectileDamage: 26),
+                GameplayState(obstacleMaxX: 101),
+            };
+            ulong digest = StateDigest.Compute(baseline);
+            for (int index = 0; index < changed.Length; index++)
+                TestAssert.NotEqual(digest, StateDigest.Compute(changed[index]));
+        }
+
+        private static void GameplayStateComparerUsesStructuralValues()
+        {
+            BattleState first = GameplayState();
+            BattleState equal = GameplayState();
+            BattleState changed = GameplayState(secondHitPoints: 99);
+
+            TestAssert.Equal(true, BattleStateValueComparer.HaveSameValue(first, equal));
+            TestAssert.Equal(false, BattleStateValueComparer.HaveSameValue(first, changed));
+            TestAssert.Equal(StateDigest.Compute(first), StateDigest.Compute(equal));
+        }
+
+        private static BattleState GameplayState(
+            int secondHitPoints = 100,
+            uint firstCooldown = 0,
+            BattlePhase phase = BattlePhase.Playing,
+            uint roundTicks = 50,
+            int projectileX = 10,
+            ulong nextProjectileId = 2,
+            int projectileDamage = 25,
+            int obstacleMaxX = 100)
+        {
+            GameplayConfig gameplay = GameplayContractTests.Config(projectileDamage: projectileDamage);
+            ArenaConfig arena = GameplayContractTests.Arena(new ArenaRectangle(-100, obstacleMaxX, -50, 50));
+            var definition = new BattleDefinition(gameplay, arena);
+            return new BattleState(9, Roster(11, 22), new[]
+            {
+                new PlayerState(-400, 0, 0, 100, 1, firstCooldown),
+                new PlayerState(400, 0, 32_768, secondHitPoints, 0, 0),
+            }, definition, phase, 0, roundTicks, RoundResult.None, null,
+                new[] { new ProjectileState(1, new PlayerId(11), projectileX, 20, 1000, 0, 7) }, nextProjectileId);
         }
 
         private static FrameData CreateScriptedFrame(ActiveRoster roster, uint tick, int[] arrivalOrder)
