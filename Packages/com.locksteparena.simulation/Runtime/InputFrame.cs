@@ -5,6 +5,11 @@ namespace LockstepArena.Simulation
     public readonly struct InputFrame
     {
         public InputFrame(uint tick, PlayerSlot playerSlot, sbyte moveX, sbyte moveZ, ushort aim)
+            : this(tick, playerSlot, moveX, moveZ, aim, false)
+        {
+        }
+
+        public InputFrame(uint tick, PlayerSlot playerSlot, sbyte moveX, sbyte moveZ, ushort aim, bool fire)
         {
             if (moveX < -1 || moveX > 1)
             {
@@ -21,6 +26,7 @@ namespace LockstepArena.Simulation
             MoveX = moveX;
             MoveZ = moveZ;
             Aim = aim;
+            Fire = fire;
         }
 
         public uint Tick { get; }
@@ -32,5 +38,7 @@ namespace LockstepArena.Simulation
         public sbyte MoveZ { get; }
 
         public ushort Aim { get; }
+
+        public bool Fire { get; }
     }
 }
