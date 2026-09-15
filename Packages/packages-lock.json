@@ -17,6 +17,56 @@
       },
       "hash": "d49ae2953580f3481beb1e084a1da2682f0b5610"
     },
+    "com.locksteparena.client-prediction": {
+      "version": "file:com.locksteparena.client-prediction",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.locksteparena.simulation": "0.1.0"
+      }
+    },
+    "com.locksteparena.client-live-tcp": {
+      "version": "file:com.locksteparena.client-live-tcp",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.locksteparena.client-prediction": "0.1.0",
+        "com.locksteparena.protocol": "0.1.0",
+        "com.locksteparena.simulation": "0.1.0",
+        "com.locksteparena.stream-framing": "0.1.0"
+      }
+    },
+    "com.locksteparena.client-demo": {
+      "version": "file:com.locksteparena.client-demo",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.locksteparena.client-live-tcp": "0.1.0",
+        "com.locksteparena.protocol": "0.1.0",
+        "com.locksteparena.simulation": "0.1.0",
+        "com.locksteparena.stream-framing": "0.1.0"
+      }
+    },
+    "com.locksteparena.simulation": {
+      "version": "file:com.locksteparena.simulation",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "com.locksteparena.protocol": {
+      "version": "file:com.locksteparena.protocol",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.locksteparena.simulation": "0.1.0"
+      }
+    },
+    "com.locksteparena.stream-framing": {
+      "version": "file:com.locksteparena.stream-framing",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,

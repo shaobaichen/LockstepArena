@@ -1,0 +1,18 @@
+{
+  "name": "LockstepArena.Demo",
+  "rootNamespace": "LockstepArena.Demo",
+  "references": [
+    "LockstepArena.Client.Demo",
+    "LockstepArena.Client.LiveTcp",
+    "LockstepArena.Simulation"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
