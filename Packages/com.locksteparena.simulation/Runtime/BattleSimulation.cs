@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace LockstepArena.Simulation
 {
@@ -155,49 +156,325 @@ namespace LockstepArena.Simulation
             PlayerState[] players,
             BattleDefinition definition)
         {
-            int steps = Math.Max(Math.Abs(deltaX), Math.Abs(deltaZ));
-            if (steps == 0) return NoHit;
             int projectileRadius = definition.Gameplay.ProjectileRadiusUnits;
-            for (int step = 1; step <= steps; step++)
+            RationalTime? obstacleTime = FindEarliestObstacleTime(
+                projectile.PositionX,
+                projectile.PositionZ,
+                deltaX,
+                deltaZ,
+                projectileRadius,
+                definition.Arena);
+            CircleHit? playerHit = null;
+            for (int slotValue = 0; slotValue < players.Length; slotValue++)
             {
-                int x = checked(projectile.PositionX + (int)((long)deltaX * step / steps));
-                int z = checked(projectile.PositionZ + (int)((long)deltaZ * step / steps));
-                if (HitsArena(x, z, projectileRadius, definition.Arena)) return ObstacleHit;
-                for (int slotValue = 0; slotValue < players.Length; slotValue++)
+                var slot = new PlayerSlot(slotValue);
+                if (roster.GetPlayerId(slot) == projectile.OwnerPlayerId) continue;
+                PlayerState player = players[slotValue];
+                if (player.HitPoints == 0) continue;
+                if (!TryGetCircleHit(
+                    projectile.PositionX,
+                    projectile.PositionZ,
+                    deltaX,
+                    deltaZ,
+                    player.PositionX,
+                    player.PositionZ,
+                    checked(projectileRadius + definition.Gameplay.PlayerRadiusUnits),
+                    slotValue,
+                    out CircleHit candidate))
                 {
-                    var slot = new PlayerSlot(slotValue);
-                    if (roster.GetPlayerId(slot) == projectile.OwnerPlayerId) continue;
-                    PlayerState player = players[slotValue];
-                    if (player.HitPoints > 0 && HitsCircle(x, z, player.PositionX, player.PositionZ,
-                        checked(projectileRadius + definition.Gameplay.PlayerRadiusUnits))) return slotValue;
+                    continue;
                 }
+
+                if (!playerHit.HasValue || CompareCircleHits(candidate, playerHit.Value) < 0)
+                    playerHit = candidate;
             }
-            return NoHit;
+
+            if (!playerHit.HasValue) return obstacleTime.HasValue ? ObstacleHit : NoHit;
+            if (!obstacleTime.HasValue) return playerHit.Value.PlayerSlot;
+            return CompareCircleToRational(playerHit.Value, obstacleTime.Value) < 0
+                ? playerHit.Value.PlayerSlot
+                : ObstacleHit;
         }
 
-        private static bool HitsArena(int x, int z, int radius, ArenaConfig arena)
+        private static RationalTime? FindEarliestObstacleTime(
+            int startX,
+            int startZ,
+            int deltaX,
+            int deltaZ,
+            int radius,
+            ArenaConfig arena)
         {
             ArenaRectangle bounds = arena.Bounds;
-            if ((long)x - radius < bounds.MinX || (long)x + radius > bounds.MaxX ||
-                (long)z - radius < bounds.MinZ || (long)z + radius > bounds.MaxZ) return true;
+            RationalTime? earliest = FindArenaExitTime(
+                startX,
+                startZ,
+                deltaX,
+                deltaZ,
+                (BigInteger)bounds.MinX + radius,
+                (BigInteger)bounds.MaxX - radius,
+                (BigInteger)bounds.MinZ + radius,
+                (BigInteger)bounds.MaxZ - radius);
             for (int index = 0; index < arena.ObstacleCount; index++)
             {
                 ArenaRectangle obstacle = arena.GetObstacle(index);
-                if ((long)x >= (long)obstacle.MinX - radius && (long)x <= (long)obstacle.MaxX + radius &&
-                    (long)z >= (long)obstacle.MinZ - radius && (long)z <= (long)obstacle.MaxZ + radius) return true;
+                if (TryGetAabbEntryTime(
+                    startX,
+                    startZ,
+                    deltaX,
+                    deltaZ,
+                    (BigInteger)obstacle.MinX - radius,
+                    (BigInteger)obstacle.MaxX + radius,
+                    (BigInteger)obstacle.MinZ - radius,
+                    (BigInteger)obstacle.MaxZ + radius,
+                    out RationalTime candidate) &&
+                    (!earliest.HasValue || candidate.CompareTo(earliest.Value) < 0))
+                {
+                    earliest = candidate;
+                }
             }
-            return false;
+
+            return earliest;
         }
 
-        private static bool HitsCircle(int x, int z, int centerX, int centerZ, int radius)
+        private static RationalTime? FindArenaExitTime(
+            int startX,
+            int startZ,
+            int deltaX,
+            int deltaZ,
+            BigInteger minX,
+            BigInteger maxX,
+            BigInteger minZ,
+            BigInteger maxZ)
         {
-            ulong dx = (ulong)Math.Abs((long)x - centerX);
-            ulong dz = (ulong)Math.Abs((long)z - centerZ);
-            ulong r = checked((ulong)radius);
-            if (dx > r || dz > r) return false;
-            ulong limit = r * r;
-            ulong xSquared = dx * dx;
-            return xSquared <= limit && dz * dz <= limit - xSquared;
+            if (startX < minX || startX > maxX || startZ < minZ || startZ > maxZ)
+                return RationalTime.Zero;
+
+            RationalTime? earliest = null;
+            AddArenaExitCandidate(startX, deltaX, minX, maxX, ref earliest);
+            AddArenaExitCandidate(startZ, deltaZ, minZ, maxZ, ref earliest);
+            return earliest;
+        }
+
+        private static void AddArenaExitCandidate(
+            int start,
+            int delta,
+            BigInteger minimum,
+            BigInteger maximum,
+            ref RationalTime? earliest)
+        {
+            BigInteger end = (BigInteger)start + delta;
+            RationalTime? candidate = null;
+            if (end < minimum)
+                candidate = new RationalTime((BigInteger)start - minimum, -delta);
+            else if (end > maximum)
+                candidate = new RationalTime(maximum - start, delta);
+
+            if (candidate.HasValue &&
+                candidate.Value.CompareTo(RationalTime.Zero) >= 0 &&
+                candidate.Value.CompareTo(RationalTime.One) <= 0 &&
+                (!earliest.HasValue || candidate.Value.CompareTo(earliest.Value) < 0))
+            {
+                earliest = candidate;
+            }
+        }
+
+        private static bool TryGetAabbEntryTime(
+            int startX,
+            int startZ,
+            int deltaX,
+            int deltaZ,
+            BigInteger minX,
+            BigInteger maxX,
+            BigInteger minZ,
+            BigInteger maxZ,
+            out RationalTime entry)
+        {
+            RationalTime enter = RationalTime.Zero;
+            RationalTime exit = RationalTime.One;
+            if (!ClipAxis(startX, deltaX, minX, maxX, ref enter, ref exit) ||
+                !ClipAxis(startZ, deltaZ, minZ, maxZ, ref enter, ref exit) ||
+                enter.CompareTo(exit) > 0)
+            {
+                entry = default;
+                return false;
+            }
+
+            entry = enter;
+            return true;
+        }
+
+        private static bool ClipAxis(
+            int start,
+            int delta,
+            BigInteger minimum,
+            BigInteger maximum,
+            ref RationalTime enter,
+            ref RationalTime exit)
+        {
+            if (delta == 0) return start >= minimum && start <= maximum;
+            var first = new RationalTime(minimum - start, delta);
+            var second = new RationalTime(maximum - start, delta);
+            if (first.CompareTo(second) > 0)
+            {
+                RationalTime swap = first;
+                first = second;
+                second = swap;
+            }
+
+            if (first.CompareTo(enter) > 0) enter = first;
+            if (second.CompareTo(exit) < 0) exit = second;
+            return enter.CompareTo(exit) <= 0;
+        }
+
+        private static bool TryGetCircleHit(
+            int startX,
+            int startZ,
+            int deltaX,
+            int deltaZ,
+            int centerX,
+            int centerZ,
+            int radius,
+            int playerSlot,
+            out CircleHit hit)
+        {
+            BigInteger offsetX = (BigInteger)startX - centerX;
+            BigInteger offsetZ = (BigInteger)startZ - centerZ;
+            BigInteger radiusWide = radius;
+            BigInteger c = (offsetX * offsetX) + (offsetZ * offsetZ) - (radiusWide * radiusWide);
+            if (c <= 0)
+            {
+                hit = CircleHit.AtStart(playerSlot);
+                return true;
+            }
+
+            BigInteger dx = deltaX;
+            BigInteger dz = deltaZ;
+            BigInteger a = (dx * dx) + (dz * dz);
+            if (a == 0)
+            {
+                hit = default;
+                return false;
+            }
+
+            BigInteger b = 2 * ((offsetX * dx) + (offsetZ * dz));
+            if (b >= 0)
+            {
+                hit = default;
+                return false;
+            }
+
+            BigInteger discriminant = (b * b) - (4 * a * c);
+            if (discriminant < 0)
+            {
+                hit = default;
+                return false;
+            }
+
+            BigInteger atEnd = (2 * a) + b;
+            if (atEnd < 0 && (atEnd * atEnd) > discriminant)
+            {
+                hit = default;
+                return false;
+            }
+
+            hit = new CircleHit(playerSlot, a, b, discriminant, false);
+            return true;
+        }
+
+        private static int CompareCircleHits(CircleHit left, CircleHit right)
+        {
+            if (left.IsAtStart) return right.IsAtStart ? 0 : -1;
+            if (right.IsAtStart) return 1;
+
+            return CompareBaseMinusSquareRoot(
+                -left.B,
+                left.Discriminant,
+                -right.B,
+                right.Discriminant);
+        }
+
+        private static int CompareBaseMinusSquareRoot(
+            BigInteger leftBase,
+            BigInteger leftRadicand,
+            BigInteger rightBase,
+            BigInteger rightRadicand)
+        {
+            BigInteger difference = leftBase - rightBase;
+            if (difference == 0) return rightRadicand.CompareTo(leftRadicand);
+            if (difference < 0)
+                return -CompareBaseMinusSquareRoot(
+                    rightBase,
+                    rightRadicand,
+                    leftBase,
+                    leftRadicand);
+
+            BigInteger residual = leftRadicand - (difference * difference) - rightRadicand;
+            if (residual < 0) return 1;
+            if (residual == 0) return rightRadicand == 0 ? 0 : 1;
+            int comparison = (residual * residual).CompareTo(
+                4 * difference * difference * rightRadicand);
+            return comparison < 0 ? 1 : comparison == 0 ? 0 : -1;
+        }
+
+        private static int CompareCircleToRational(CircleHit circle, RationalTime rational)
+        {
+            if (circle.IsAtStart)
+                return rational.CompareTo(RationalTime.Zero) == 0 ? 0 : -1;
+
+            BigInteger scaled =
+                (2 * circle.A * rational.Numerator) +
+                (circle.B * rational.Denominator);
+            if (scaled >= 0) return -1;
+            int comparison = (scaled * scaled).CompareTo(
+                circle.Discriminant * rational.Denominator * rational.Denominator);
+            return comparison < 0 ? -1 : comparison == 0 ? 0 : 1;
+        }
+
+        private readonly struct RationalTime : IComparable<RationalTime>
+        {
+            public RationalTime(BigInteger numerator, BigInteger denominator)
+            {
+                if (denominator == 0) throw new DivideByZeroException();
+                if (denominator < 0)
+                {
+                    numerator = -numerator;
+                    denominator = -denominator;
+                }
+                Numerator = numerator;
+                Denominator = denominator;
+            }
+
+            public BigInteger Numerator { get; }
+            public BigInteger Denominator { get; }
+            public static RationalTime Zero => new RationalTime(0, 1);
+            public static RationalTime One => new RationalTime(1, 1);
+            public int CompareTo(RationalTime other) =>
+                (Numerator * other.Denominator).CompareTo(other.Numerator * Denominator);
+        }
+
+        private readonly struct CircleHit
+        {
+            public CircleHit(
+                int playerSlot,
+                BigInteger a,
+                BigInteger b,
+                BigInteger discriminant,
+                bool isAtStart)
+            {
+                PlayerSlot = playerSlot;
+                A = a;
+                B = b;
+                Discriminant = discriminant;
+                IsAtStart = isAtStart;
+            }
+
+            public int PlayerSlot { get; }
+            public BigInteger A { get; }
+            public BigInteger B { get; }
+            public BigInteger Discriminant { get; }
+            public bool IsAtStart { get; }
+            public static CircleHit AtStart(int playerSlot) =>
+                new CircleHit(playerSlot, 0, 0, 0, true);
         }
 
         private static ArenaPoint MoveGameplay(PlayerState player, InputFrame input, BattleDefinition definition)
@@ -296,8 +573,9 @@ namespace LockstepArena.Simulation
             for (int index = 0; index < players.Length; index++)
             {
                 ArenaPoint spawn = definition.Arena.GetSpawn(index);
+                ArenaPoint otherSpawn = definition.Arena.GetSpawn(1 - index);
                 int wins = current.GetPlayerState(new PlayerSlot(index)).RoundWins;
-                players[index] = new PlayerState(spawn.X, spawn.Z, index == 0 ? (ushort)0 : (ushort)32_768,
+                players[index] = new PlayerState(spawn.X, spawn.Z, GetAimToward(spawn, otherSpawn),
                     definition.Gameplay.MaxHitPoints, wins, 0);
             }
             return Copy(current, nextTick, BattlePhase.RoundCountdown, definition.Gameplay.RoundCountdownTicks,
@@ -327,20 +605,47 @@ namespace LockstepArena.Simulation
             return projectiles;
         }
 
-        private static void GetAimDirection(ushort aim, out int x, out int z)
+        internal static void GetAimDirection(ushort aim, out int x, out int z)
         {
-            switch (((aim + 4_096) / 8_192) & 7)
+            int directionIndex = (int)((((uint)aim + 512U) >> 10) & 63U);
+            int quadrant = directionIndex >> 4;
+            int offset = directionIndex & 15;
+            int forward = QuarterCos[offset];
+            int lateral = QuarterCos[16 - offset];
+            switch (quadrant)
             {
-                case 0: x = 1000; z = 0; break;
-                case 1: x = 707; z = 707; break;
-                case 2: x = 0; z = 1000; break;
-                case 3: x = -707; z = 707; break;
-                case 4: x = -1000; z = 0; break;
-                case 5: x = -707; z = -707; break;
-                case 6: x = 0; z = -1000; break;
-                default: x = 707; z = -707; break;
+                case 0: x = forward; z = lateral; break;
+                case 1: x = -lateral; z = forward; break;
+                case 2: x = -forward; z = -lateral; break;
+                default: x = lateral; z = -forward; break;
             }
         }
+
+        internal static ushort GetAimToward(ArenaPoint from, ArenaPoint to)
+        {
+            long deltaX = (long)to.X - from.X;
+            long deltaZ = (long)to.Z - from.Z;
+            long bestDot = long.MinValue;
+            int bestIndex = 0;
+            for (int index = 0; index < 64; index++)
+            {
+                ushort aim = checked((ushort)(index << 10));
+                GetAimDirection(aim, out int directionX, out int directionZ);
+                long dot = checked((deltaX * directionX) + (deltaZ * directionZ));
+                if (dot > bestDot)
+                {
+                    bestDot = dot;
+                    bestIndex = index;
+                }
+            }
+            return checked((ushort)(bestIndex << 10));
+        }
+
+        private static readonly short[] QuarterCos =
+        {
+            1000, 995, 981, 957, 924, 882, 831, 773, 707,
+            634, 556, 471, 383, 290, 195, 98, 0,
+        };
 
         private static int AddScaled(int origin, int direction, int distance) => checked(origin + Scale(direction, distance));
         private static int Scale(int direction, int distance) => checked((int)((long)direction * distance / 1000));

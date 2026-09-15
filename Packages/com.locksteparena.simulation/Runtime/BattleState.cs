@@ -80,7 +80,8 @@ namespace LockstepArena.Simulation
             for (int index = 0; index < players.Length; index++)
             {
                 ArenaPoint spawn = definition.Arena.GetSpawn(index);
-                ushort aim = index == 0 ? (ushort)0 : (ushort)32_768;
+                ArenaPoint otherSpawn = definition.Arena.GetSpawn(1 - index);
+                ushort aim = BattleSimulation.GetAimToward(spawn, otherSpawn);
                 players[index] = new PlayerState(spawn.X, spawn.Z, aim, definition.Gameplay.MaxHitPoints, 0, 0);
             }
             return new BattleState(0, roster, players, definition, BattlePhase.RoundCountdown,

@@ -12,6 +12,7 @@ namespace LockstepArena.Simulation.Tests
             new TestCase(nameof(GameplayInitialStateUsesSpawnsAndCompleteDefaults), GameplayInitialStateUsesSpawnsAndCompleteDefaults),
             new TestCase(nameof(LegacyInputFrameDefaultsFireToFalse), LegacyInputFrameDefaultsFireToFalse),
             new TestCase(nameof(GameplayInitialStateUsesRosterSlotsWithoutPlayerBranches), GameplayInitialStateUsesRosterSlotsWithoutPlayerBranches),
+            new TestCase(nameof(GameplayInitialStateFacesVerticalSpawnsTowardEachOther), GameplayInitialStateFacesVerticalSpawnsTowardEachOther),
         };
 
         private static void GameplayConfigRejectsInvalidGeometryAndDurations()
@@ -73,6 +74,22 @@ namespace LockstepArena.Simulation.Tests
             TestAssert.Equal(new PlayerId(42), state.Roster.GetPlayerId(new PlayerSlot(1)));
             TestAssert.Equal(-400, state.GetPlayerState(new PlayerSlot(0)).PositionX);
             TestAssert.Equal(400, state.GetPlayerState(new PlayerSlot(1)).PositionX);
+        }
+
+        private static void GameplayInitialStateFacesVerticalSpawnsTowardEachOther()
+        {
+            var arena = new ArenaConfig(
+                "vertical-facing",
+                new ArenaRectangle(-1_000, 1_000, -1_000, 1_000),
+                new[] { new ArenaPoint(0, -400), new ArenaPoint(0, 400) },
+                Array.Empty<ArenaRectangle>());
+
+            BattleState state = BattleState.CreateGameplayInitial(
+                Roster(11, 22),
+                new BattleDefinition(Config(), arena));
+
+            AssertPlayer(state, 0, 0, -400, 100, 0, 0, 16_384);
+            AssertPlayer(state, 1, 0, 400, 100, 0, 0, 49_152);
         }
 
         internal static GameplayConfig Config(

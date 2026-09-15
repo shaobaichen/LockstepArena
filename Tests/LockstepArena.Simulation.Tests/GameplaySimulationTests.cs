@@ -16,12 +16,18 @@ namespace LockstepArena.Simulation.Tests
             new TestCase(nameof(ProjectileSweepPreventsHighSpeedTunneling), ProjectileSweepPreventsHighSpeedTunneling),
             new TestCase(nameof(WallBeforePlayerConsumesProjectileWithoutDamage), WallBeforePlayerConsumesProjectileWithoutDamage),
             new TestCase(nameof(PlayerBeforeWallTakesOneDamageOnly), PlayerBeforeWallTakesOneDamageOnly),
+            new TestCase(nameof(PlayerSlightlyEarlierInsideOneOldSamplingCellWins), PlayerSlightlyEarlierInsideOneOldSamplingCellWins),
+            new TestCase(nameof(ObstacleSlightlyEarlierInsideOneOldSamplingCellWins), ObstacleSlightlyEarlierInsideOneOldSamplingCellWins),
             new TestCase(nameof(ExactObstaclePlayerTiePrefersObstacle), ExactObstaclePlayerTiePrefersObstacle),
             new TestCase(nameof(ProjectileOwnerIsIgnored), ProjectileOwnerIsIgnored),
+            new TestCase(nameof(NonCardinalAimsProduceDistinctFixedDirections), NonCardinalAimsProduceDistinctFixedDirections),
+            new TestCase(nameof(SameNonCardinalAimProducesIdenticalState), SameNonCardinalAimProducesIdenticalState),
+            new TestCase(nameof(AimWrapAroundUsesAdjacentDirections), AimWrapAroundUsesAdjacentDirections),
             new TestCase(nameof(SameTickDoubleKnockoutIsDraw), SameTickDoubleKnockoutIsDraw),
             new TestCase(nameof(TimeoutChoosesUniqueHighestHpOrDraw), TimeoutChoosesUniqueHighestHpOrDraw),
             new TestCase(nameof(LethalHitWinsBeforeSameTickTimeoutComparison), LethalHitWinsBeforeSameTickTimeoutComparison),
             new TestCase(nameof(RoundResetRestoresRoundFieldsAndPreservesWins), RoundResetRestoresRoundFieldsAndPreservesWins),
+            new TestCase(nameof(RoundResetFacesDiagonalSpawnsTowardEachOther), RoundResetFacesDiagonalSpawnsTowardEachOther),
             new TestCase(nameof(SecondRoundWinEndsBestOfThree), SecondRoundWinEndsBestOfThree),
             new TestCase(nameof(GameplayTwinSimulationsRemainIdentical), GameplayTwinSimulationsRemainIdentical),
         };
@@ -133,15 +139,28 @@ namespace LockstepArena.Simulation.Tests
             TestAssert.Equal(75, result.GetPlayerState(new PlayerSlot(1)).HitPoints);
         }
 
+        private static void PlayerSlightlyEarlierInsideOneOldSamplingCellWins()
+        {
+            BattleState result = Step(CloseCollisionOrderingState(playerX: 100, playerZ: 66));
+
+            TestAssert.Equal(75, result.GetPlayerState(new PlayerSlot(1)).HitPoints);
+            TestAssert.Equal(0, result.ProjectileCount);
+        }
+
+        private static void ObstacleSlightlyEarlierInsideOneOldSamplingCellWins()
+        {
+            BattleState result = Step(CloseCollisionOrderingState(playerX: 100, playerZ: 67));
+
+            TestAssert.Equal(100, result.GetPlayerState(new PlayerSlot(1)).HitPoints);
+            TestAssert.Equal(0, result.ProjectileCount);
+        }
+
         private static void ExactObstaclePlayerTiePrefersObstacle()
         {
-            BattleDefinition definition = Definition(projectileUnitsPerTick: 1_000,
-                obstacles: new[] { new ArenaRectangle(120, 220, -100, 100) });
-            BattleState state = State(definition, BattlePhase.Playing, 100, 0,
-                new[] { Player(-800, 0), Player(220, 0) },
-                new[] { Projectile(1, 11, -500, 0, 1000, 0, 5) }, 2);
-            BattleState result = Step(state);
+            BattleState result = Step(CloseCollisionOrderingState(playerX: 96, playerZ: 72));
+
             TestAssert.Equal(100, result.GetPlayerState(new PlayerSlot(1)).HitPoints);
+            TestAssert.Equal(0, result.ProjectileCount);
         }
 
         private static void ProjectileOwnerIsIgnored()
@@ -153,6 +172,29 @@ namespace LockstepArena.Simulation.Tests
             BattleState result = Step(state);
             TestAssert.Equal(100, result.GetPlayerState(new PlayerSlot(0)).HitPoints);
             TestAssert.Equal(1, result.ProjectileCount);
+        }
+
+        private static void NonCardinalAimsProduceDistinctFixedDirections()
+        {
+            AssertProjectileDirection(4_096, 924, 383);
+            AssertProjectileDirection(8_192, 707, 707);
+            AssertProjectileDirection(12_288, 383, 924);
+        }
+
+        private static void SameNonCardinalAimProducesIdenticalState()
+        {
+            BattleState left = FireOnce(12_345);
+            BattleState right = FireOnce(12_345);
+
+            TestAssert.Equal(true, BattleStateValueComparer.HaveSameValue(left, right));
+            TestAssert.Equal(StateDigest.Compute(left), StateDigest.Compute(right));
+        }
+
+        private static void AimWrapAroundUsesAdjacentDirections()
+        {
+            AssertProjectileDirection(0, 1000, 0);
+            AssertProjectileDirection(ushort.MaxValue, 1000, 0);
+            AssertProjectileDirection(64_512, 995, -98);
         }
 
         private static void SameTickDoubleKnockoutIsDraw()
@@ -205,6 +247,28 @@ namespace LockstepArena.Simulation.Tests
             TestAssert.Equal(8UL, result.NextProjectileId);
         }
 
+        private static void RoundResetFacesDiagonalSpawnsTowardEachOther()
+        {
+            var arena = new ArenaConfig(
+                "diagonal-reset",
+                new ArenaRectangle(-1_000, 1_000, -1_000, 1_000),
+                new[] { new ArenaPoint(-400, -400), new ArenaPoint(400, 400) },
+                Array.Empty<ArenaRectangle>());
+            var definition = new BattleDefinition(GameplayContractTests.Config(), arena);
+            BattleState state = State(
+                definition,
+                BattlePhase.RoundEnded,
+                100,
+                1,
+                Player(100, 100, aim: 999),
+                Player(-100, -100, aim: 888));
+
+            BattleState result = Step(state);
+
+            GameplayContractTests.AssertPlayer(result, 0, -400, -400, 100, 0, 0, 8_192);
+            GameplayContractTests.AssertPlayer(result, 1, 400, 400, 100, 0, 0, 40_960);
+        }
+
         private static void SecondRoundWinEndsBestOfThree()
         {
             BattleDefinition definition = Definition(projectileUnitsPerTick: 500, projectileDamage: 25);
@@ -236,6 +300,43 @@ namespace LockstepArena.Simulation.Tests
         }
 
         private static BattleState Initial() => BattleState.CreateGameplayInitial(GameplayContractTests.Roster(11, 22), Definition());
+
+        private static BattleState CloseCollisionOrderingState(int playerX, int playerZ)
+        {
+            BattleDefinition definition = Definition(
+                projectileUnitsPerTick: 250,
+                obstacles: new[] { new ArenaRectangle(20, 30, -5, 5) });
+            return State(
+                definition,
+                BattlePhase.Playing,
+                100,
+                0,
+                new[] { Player(-800, 0), Player(playerX, playerZ) },
+                new[] { Projectile(1, 11, -10, 0, 1000, 0, 5) },
+                2);
+        }
+
+        private static BattleState FireOnce(ushort aim)
+        {
+            BattleDefinition definition = Definition(projectileUnitsPerTick: 1);
+            BattleState state = State(
+                definition,
+                BattlePhase.Playing,
+                100,
+                0,
+                Player(-700, 400),
+                Player(700, -400));
+            var simulation = new BattleSimulation(state);
+            simulation.Step(Frame(state, Input(state, 0, aim: aim, fire: true), Input(state, 1)));
+            return simulation.State;
+        }
+
+        private static void AssertProjectileDirection(ushort aim, int expectedX, int expectedZ)
+        {
+            ProjectileState projectile = FireOnce(aim).GetProjectile(0);
+            TestAssert.Equal(expectedX, projectile.DirectionX);
+            TestAssert.Equal(expectedZ, projectile.DirectionZ);
+        }
 
         private static BattleDefinition Definition(
             int projectileUnitsPerTick = 250,
