@@ -1,5 +1,6 @@
 using System;
 using System.Net.Sockets;
+using System.Diagnostics;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.LiveTcp;
 using LockstepArena.Simulation;
@@ -14,8 +15,10 @@ namespace LockstepArena.Server.DemoHost
         private readonly bool[] _reserved;
         private readonly bool[] _used;
         private readonly TcpClient?[] _attachedClients;
+        private readonly long _startedTimestamp;
+        private readonly TimeSpan _readyTimeout;
 
-        internal BattlePreparation(ulong battleId, BattleState initialState, uint finalStateTick, DemoSession[] participants, byte[][] tickets, BattlePreparingEventMessage[] events)
+        internal BattlePreparation(ulong battleId, BattleState initialState, uint finalStateTick, DemoSession[] participants, byte[][] tickets, BattlePreparingEventMessage[] events, TimeSpan readyTimeout)
         {
             BattleId = battleId;
             InitialState = initialState;
@@ -27,6 +30,8 @@ namespace LockstepArena.Server.DemoHost
             _reserved = new bool[tickets.Length];
             _used = new bool[tickets.Length];
             _attachedClients = new TcpClient?[tickets.Length];
+            _startedTimestamp = Stopwatch.GetTimestamp();
+            _readyTimeout = readyTimeout;
         }
 
         internal ulong BattleId { get; }
@@ -39,6 +44,19 @@ namespace LockstepArena.Server.DemoHost
         internal bool HasReportedStatus { get; private set; }
         internal uint LastReportedStateTick { get; private set; }
         internal uint LastReportedNextPublishTick { get; private set; }
+        internal bool RequiresBattleReady => InitialState.IsGameplayEnabled;
+        internal bool ReadyTimedOut => RequiresBattleReady && Stopwatch.GetElapsedTime(_startedTimestamp) >= _readyTimeout;
+        internal bool AllParticipantsReady
+        {
+            get
+            {
+                if (AttachedCount != ParticipantCount) return false;
+                if (!RequiresBattleReady) return true;
+                for (int index = 0; index < _participants.Length; index++)
+                    if (!_participants[index].IsBattleReady) return false;
+                return true;
+            }
+        }
 
         internal DemoSession GetParticipant(PlayerSlot slot)
         {
@@ -98,6 +116,38 @@ namespace LockstepArena.Server.DemoHost
         {
             ValidateSlot(slot);
             return _attachedClients[slot.Value] ?? throw new InvalidOperationException("Participant is not attached.");
+        }
+
+        internal bool IsAttached(PlayerSlot slot)
+        {
+            ValidateSlot(slot);
+            return _attachedClients[slot.Value] is not null;
+        }
+
+        internal bool TryGetDisconnectedSlot(out PlayerSlot slot)
+        {
+            for (int index = 0; index < _attachedClients.Length; index++)
+            {
+                TcpClient? client = _attachedClients[index];
+                if (client is null) continue;
+                try
+                {
+                    Socket socket = client.Client;
+                    if (!socket.Poll(0, SelectMode.SelectRead) || socket.Available != 0) continue;
+                }
+                catch (SocketException)
+                {
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+
+                slot = new PlayerSlot(index);
+                return true;
+            }
+
+            slot = default;
+            return false;
         }
 
         internal void Activate(DemoServerOptions options)

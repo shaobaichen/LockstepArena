@@ -4,7 +4,9 @@
   "references": [
     "LockstepArena.Client.Demo",
     "LockstepArena.Client.LiveTcp",
-    "LockstepArena.Simulation"
+    "LockstepArena.Protocol",
+    "LockstepArena.Simulation",
+    "Unity.InputSystem"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

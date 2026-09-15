@@ -1,4 +1,6 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
 using LockstepArena.Simulation;
 
 namespace LockstepArena.Server.DemoHost
@@ -28,7 +30,10 @@ namespace LockstepArena.Server.DemoHost
             int maxBattlePayloadLength,
             int battleReceiveBufferLength,
             int battleReceiveOffset,
-            int battleReceiveReadCapacity)
+            int battleReceiveReadCapacity,
+            string bindAddress = "127.0.0.1",
+            BattleDefinition? battleDefinition = null,
+            TimeSpan? battleReadyTimeout = null)
         {
             ValidatePort(controlPort, nameof(controlPort));
             ValidatePort(battlePort, nameof(battlePort));
@@ -62,6 +67,11 @@ namespace LockstepArena.Server.DemoHost
             RequirePositive(maxControlSendBytesPerPump, nameof(maxControlSendBytesPerPump));
             ValidatePayload(maxBattlePayloadLength, nameof(maxBattlePayloadLength));
             ValidateBuffer(battleReceiveBufferLength, battleReceiveOffset, battleReceiveReadCapacity, nameof(battleReceiveBufferLength), nameof(battleReceiveOffset), nameof(battleReceiveReadCapacity));
+            if (!IPAddress.TryParse(bindAddress, out IPAddress? parsedAddress) ||
+                parsedAddress.AddressFamily != AddressFamily.InterNetwork)
+                throw new ArgumentException("Bind address must be a numeric IPv4 address.", nameof(bindAddress));
+            TimeSpan readyTimeout = battleReadyTimeout ?? TimeSpan.FromSeconds(15);
+            if (readyTimeout < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(battleReadyTimeout));
 
             ControlPort = controlPort;
             BattlePort = battlePort;
@@ -84,6 +94,9 @@ namespace LockstepArena.Server.DemoHost
             BattleReceiveBufferLength = battleReceiveBufferLength;
             BattleReceiveOffset = battleReceiveOffset;
             BattleReceiveReadCapacity = battleReceiveReadCapacity;
+            BindAddress = parsedAddress;
+            BattleDefinition = battleDefinition;
+            BattleReadyTimeout = readyTimeout;
         }
 
         public int ControlPort { get; }
@@ -107,6 +120,9 @@ namespace LockstepArena.Server.DemoHost
         public int BattleReceiveBufferLength { get; }
         public int BattleReceiveOffset { get; }
         public int BattleReceiveReadCapacity { get; }
+        public IPAddress BindAddress { get; }
+        public BattleDefinition? BattleDefinition { get; }
+        public TimeSpan BattleReadyTimeout { get; }
 
         public PlayerState GetSpawnState(PlayerSlot slot)
         {

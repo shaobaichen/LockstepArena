@@ -27,6 +27,8 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(SettlementMismatchOrImpossibleTickFailsStop), SettlementMismatchOrImpossibleTickFailsStop),
             new TestCase(nameof(NormalSettlementDisposesBattleButPreservesControlSession), NormalSettlementDisposesBattleButPreservesControlSession),
             new TestCase(nameof(BattleFailureAbortsRoomAndNotifiesSurvivingControls), BattleFailureAbortsRoomAndNotifiesSurvivingControls),
+            new TestCase(nameof(GameplayMatchEndedCreatesWinnerAndScoreSettlement), GameplayMatchEndedCreatesWinnerAndScoreSettlement),
+            new TestCase(nameof(GameplayBattleDisconnectSettlesAsForfeit), GameplayBattleDisconnectSettlesAsForfeit),
         };
 
         private static void ClientNeverSubmitsInputPastFinalInputTick()
@@ -178,6 +180,59 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.Equal(0, server.RoomCount);
         }
 
+        private static void GameplayMatchEndedCreatesWinnerAndScoreSettlement()
+        {
+            using var fixture = new GameplayBattleFixture();
+            StopBattleClock(fixture.Preparation);
+            fixture.Host.ClearEvents();
+            fixture.Guest.ClearEvents();
+            uint submittedTick = uint.MaxValue;
+            for (int iteration = 0; iteration < 40 && fixture.Room.Lifecycle == DemoRoomLifecycle.InBattle; iteration++)
+            {
+                uint tick = fixture.Preparation.SharedSession!.NextPublishTick;
+                if (tick != submittedTick)
+                {
+                    BattleState state = fixture.Preparation.SharedSession.ServerState;
+                    bool hostFires = state.Phase == BattlePhase.Playing;
+                    SendInput(fixture.HostBattle, state.Roster.GetPlayerId(new PlayerSlot(0)),
+                        new InputFrame(tick, new PlayerSlot(0), 0, 0, 0, hostFires));
+                    SendInput(fixture.GuestBattle, state.Roster.GetPlayerId(new PlayerSlot(1)),
+                        new InputFrame(tick, new PlayerSlot(1), 0, 0, 32768, false));
+                    submittedTick = tick;
+                }
+
+                ForceNextPollAdvances(fixture.Preparation, 1U);
+                fixture.Server.PumpOnce();
+            }
+
+            TestAssert.Equal(DemoRoomLifecycle.Settled, fixture.Room.Lifecycle);
+            BattleSettlementEventMessage settlement = fixture.Host.LastEvent.BattleSettlement;
+            TestAssert.Equal(BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted, settlement.Reason);
+            TestAssert.Equal(fixture.Host.SessionId, settlement.WinnerPlayerId);
+            TestAssert.Equal(2U, settlement.Slot0RoundWins);
+            TestAssert.Equal(0U, settlement.Slot1RoundWins);
+            TestAssert.True(settlement.FinalState.Tick < fixture.Preparation.FinalStateTick);
+        }
+
+        private static void GameplayBattleDisconnectSettlesAsForfeit()
+        {
+            using var fixture = new GameplayBattleFixture();
+            fixture.Host.ClearEvents();
+            fixture.Guest.ClearEvents();
+            fixture.HostBattle.Client.Shutdown(SocketShutdown.Both);
+            fixture.HostBattle.Dispose();
+            DemoServerPumpResult result = default;
+            for (int index = 0; index < 100 && fixture.Room.Lifecycle == DemoRoomLifecycle.InBattle; index++)
+                result = fixture.Server.PumpOnce();
+
+            TestAssert.Equal(DemoRoomLifecycle.Settled, fixture.Room.Lifecycle);
+            TestAssert.Equal(1, result.CompletedBattles);
+            BattleSettlementEventMessage settlement = fixture.Guest.LastEvent.BattleSettlement;
+            TestAssert.Equal(BattleSettlementReasonMessage.BattleSettlementReasonDisconnectForfeit, settlement.Reason);
+            TestAssert.Equal(fixture.Guest.SessionId, settlement.WinnerPlayerId);
+            TestAssert.True(settlement.FinalState is not null);
+        }
+
         private static TcpClient AttachBattle(TcpDemoServer server, byte[] ticket)
         {
             var client = new TcpClient(AddressFamily.InterNetwork);
@@ -252,7 +307,20 @@ namespace LockstepArena.DemoFlow.Tests
             client.GetStream().Write(frame, 0, frame.Length);
         }
 
-        private static void StopBattleClock(BattlePreparation preparation)
+        internal static BattleDefinition CreateFastGameplayDefinition()
+        {
+            var gameplay = new GameplayConfig(
+                1, 1, 100, 1, 500, 10, 50, 10, 30, 5,
+                30, 1, 1, 2);
+            var arena = new ArenaConfig(
+                "fast-settlement",
+                new ArenaRectangle(-1_000, 1_000, -1_000, 1_000),
+                new[] { new ArenaPoint(-200, 0), new ArenaPoint(200, 0) },
+                Array.Empty<ArenaRectangle>());
+            return new BattleDefinition(gameplay, arena);
+        }
+
+        internal static void StopBattleClock(BattlePreparation preparation)
         {
             object shared = preparation.SharedSession ?? throw new InvalidOperationException("Missing shared session.");
             object processor = GetFieldByTypeName(shared, "ProtocolAuthorityProcessor");
@@ -261,7 +329,7 @@ namespace LockstepArena.DemoFlow.Tests
             stopwatch.Stop();
         }
 
-        private static void ForceNextPollAdvances(BattlePreparation preparation, uint dueAdvances)
+        internal static void ForceNextPollAdvances(BattlePreparation preparation, uint dueAdvances)
         {
             object shared = preparation.SharedSession ?? throw new InvalidOperationException("Missing shared session.");
             object processor = GetFieldByTypeName(shared, "ProtocolAuthorityProcessor");
@@ -373,6 +441,49 @@ namespace LockstepArena.DemoFlow.Tests
                 _controlPeer.Dispose();
                 _battleListener.Stop();
                 _controlListener.Stop();
+            }
+        }
+
+        private sealed class GameplayBattleFixture : IDisposable
+        {
+            internal GameplayBattleFixture()
+            {
+                BattleDefinition definition = CreateFastGameplayDefinition();
+                Server = new TcpDemoServer(SessionRoomTests.CreateOptions(
+                    maxSessions: 2,
+                    maxRooms: 1,
+                    maxRoomCapacity: 2,
+                    battleDefinition: definition,
+                    battleReadyTimeout: TimeSpan.FromSeconds(5),
+                    battleDurationTicks: 100));
+                Host = Server.EnterSession("GameplayHost");
+                Guest = Server.EnterSession("GameplayGuest");
+                Room = Server.CreateRoom(Host.SessionId, "Gameplay", 2);
+                Server.JoinRoom(Guest.SessionId, Room.RoomId);
+                Server.SetReady(Host.SessionId, true);
+                Server.SetReady(Guest.SessionId, true);
+                Preparation = Server.StartBattle(Host.SessionId);
+                HostBattle = AttachBattle(Server, Preparation.GetTicket(new PlayerSlot(0)));
+                GuestBattle = AttachBattle(Server, Preparation.GetTicket(new PlayerSlot(1)));
+                ulong hash = BattleConfigHash.Compute(definition);
+                Server.MarkBattleReady(Host.SessionId, Preparation.BattleId, hash);
+                Server.MarkBattleReady(Guest.SessionId, Preparation.BattleId, hash);
+                TestAssert.Equal(DemoRoomLifecycle.InBattle, Room.Lifecycle);
+            }
+
+            internal TcpDemoServer Server { get; }
+            internal DemoSession Host { get; }
+            internal DemoSession Guest { get; }
+            internal DemoRoom Room { get; }
+            internal BattlePreparation Preparation { get; }
+            internal TcpClient HostBattle { get; }
+            internal TcpClient GuestBattle { get; }
+
+            public void Dispose()
+            {
+                HostBattle.Dispose();
+                GuestBattle.Dispose();
+                Server.Dispose();
             }
         }
     }

@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using LockstepArena.Client.Demo;
+using LockstepArena.Client.LiveTcp;
 using LockstepArena.Protocol.Wire;
 using LockstepArena.Server.DemoHost;
 using LockstepArena.Simulation;
@@ -29,6 +30,10 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(PreparingControlLossInvalidatesTicketsAndClosesPreparedSockets), PreparingControlLossInvalidatesTicketsAndClosesPreparedSockets),
             new TestCase(nameof(AllAttachmentsCreateExactlyOneGate13SharedBattleSession), AllAttachmentsCreateExactlyOneGate13SharedBattleSession),
             new TestCase(nameof(ServerAndClientPumpsPerformOnlyFrozenBoundedWork), ServerAndClientPumpsPerformOnlyFrozenBoundedWork),
+            new TestCase(nameof(GameplayBattleUsesDefinitionAndWaitsForEveryBattleReady), GameplayBattleUsesDefinitionAndWaitsForEveryBattleReady),
+            new TestCase(nameof(ConfigMismatchOrReadyTimeoutAbortsPreparationToLobby), ConfigMismatchOrReadyTimeoutAbortsPreparationToLobby),
+            new TestCase(nameof(GameplayClientsSendBattleReadyOnlyAfterSceneSignal), GameplayClientsSendBattleReadyOnlyAfterSceneSignal),
+            new TestCase(nameof(GameplayClientsCompleteFastBo3AndReturnToLobby), GameplayClientsCompleteFastBo3AndReturnToLobby),
         };
 
         private static void StartRejectsNonHostWithoutMutation()
@@ -175,6 +180,188 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.Equal(DemoSessionPhase.InBattle, fixture.Guest.Phase);
         }
 
+        private static void GameplayBattleUsesDefinitionAndWaitsForEveryBattleReady()
+        {
+            BattleDefinition definition = BattleDefinition.CreateDefault();
+            using var server = new TcpDemoServer(SessionRoomTests.CreateOptions(
+                maxSessions: 2,
+                maxRooms: 1,
+                maxRoomCapacity: 2,
+                battleDefinition: definition));
+            DemoSession host = server.EnterSession("Host");
+            DemoSession guest = server.EnterSession("Guest");
+            DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
+            server.JoinRoom(guest.SessionId, room.RoomId);
+            server.SetReady(host.SessionId, true);
+            server.SetReady(guest.SessionId, true);
+            BattlePreparation preparation = server.StartBattle(host.SessionId);
+
+            TestAssert.True(preparation.InitialState.IsGameplayEnabled);
+            TestAssert.Equal(BattlePhase.RoundCountdown, preparation.InitialState.Phase);
+            TestAssert.Equal(BattleConfigHash.Compute(definition), preparation.GetPreparingEvent(new PlayerSlot(0)).Bootstrap.BattleConfigHash);
+
+            using TcpClient first = Attach(server, preparation.GetTicket(new PlayerSlot(0)));
+            using TcpClient second = Attach(server, preparation.GetTicket(new PlayerSlot(1)));
+            TestAssert.Equal(DemoSessionPhase.PreparingBattle, host.Phase);
+            server.MarkBattleReady(host.SessionId, preparation.BattleId, BattleConfigHash.Compute(definition));
+            TestAssert.Equal(DemoSessionPhase.PreparingBattle, host.Phase);
+            server.MarkBattleReady(guest.SessionId, preparation.BattleId, BattleConfigHash.Compute(definition));
+            TestAssert.Equal(DemoSessionPhase.InBattle, host.Phase);
+            TestAssert.Equal(DemoSessionPhase.InBattle, guest.Phase);
+            TestAssert.Equal(DemoRoomLifecycle.InBattle, room.Lifecycle);
+        }
+
+        private static void ConfigMismatchOrReadyTimeoutAbortsPreparationToLobby()
+        {
+            BattleDefinition definition = BattleDefinition.CreateDefault();
+            using (var server = new TcpDemoServer(SessionRoomTests.CreateOptions(
+                maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2,
+                battleDefinition: definition)))
+            {
+                DemoSession host = server.EnterSession("MismatchHost");
+                DemoSession guest = server.EnterSession("MismatchGuest");
+                DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
+                server.JoinRoom(guest.SessionId, room.RoomId);
+                server.SetReady(host.SessionId, true);
+                server.SetReady(guest.SessionId, true);
+                BattlePreparation preparation = server.StartBattle(host.SessionId);
+                server.MarkBattleReady(host.SessionId, preparation.BattleId, BattleConfigHash.Compute(definition) + 1UL);
+                TestAssert.Equal(DemoSessionPhase.Lobby, host.Phase);
+                TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
+                TestAssert.Equal(0, server.RoomCount);
+            }
+
+            using (var server = new TcpDemoServer(SessionRoomTests.CreateOptions(
+                maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2,
+                battleDefinition: definition,
+                battleReadyTimeout: TimeSpan.Zero)))
+            {
+                DemoSession host = server.EnterSession("TimeoutHost");
+                DemoSession guest = server.EnterSession("TimeoutGuest");
+                DemoRoom room = server.CreateRoom(host.SessionId, "Room", 2);
+                server.JoinRoom(guest.SessionId, room.RoomId);
+                server.SetReady(host.SessionId, true);
+                server.SetReady(guest.SessionId, true);
+                server.StartBattle(host.SessionId);
+                server.PumpOnce();
+                TestAssert.Equal(DemoSessionPhase.Lobby, host.Phase);
+                TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
+                TestAssert.Equal(0, server.RoomCount);
+            }
+        }
+
+        private static void GameplayClientsSendBattleReadyOnlyAfterSceneSignal()
+        {
+            BattleDefinition definition = BattleDefinition.CreateDefault();
+            using var server = new TcpDemoServer(SessionRoomTests.CreateOptions(
+                maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2,
+                battleDefinition: definition));
+            using var host = CreateGameplayClient(server.ControlPort, definition);
+            using var guest = CreateGameplayClient(server.ControlPort, definition);
+            ConnectAndEnter(server, host, "Host");
+            ConnectAndEnter(server, guest, "Guest");
+            host.CreateRoom("Room", 2);
+            PumpUntil(server, host, guest, () => host.Phase == DemoClientPhase.Room);
+            guest.JoinRoom(host.Snapshot.RoomId);
+            PumpUntil(server, host, guest, () => guest.Phase == DemoClientPhase.Room);
+            host.SetReady(true);
+            guest.SetReady(true);
+            Pump(server, host, guest, 20);
+            host.StartBattle();
+            PumpUntil(server, host, guest, () =>
+                host.Phase == DemoClientPhase.PreparingBattle &&
+                guest.Phase == DemoClientPhase.PreparingBattle);
+            Pump(server, host, guest, 30);
+            TestAssert.Equal(DemoClientPhase.PreparingBattle, host.Phase);
+            TestAssert.Equal(DemoClientPhase.PreparingBattle, guest.Phase);
+
+            host.MarkBattleSceneReady();
+            Pump(server, host, guest, 20);
+            TestAssert.Equal(DemoClientPhase.PreparingBattle, host.Phase);
+            guest.MarkBattleSceneReady();
+            PumpUntil(server, host, guest, () =>
+                host.Phase == DemoClientPhase.InBattle &&
+                guest.Phase == DemoClientPhase.InBattle);
+            TestAssert.True(host.PredictedBattleState is not null && host.PredictedBattleState.IsGameplayEnabled);
+            TestAssert.True(guest.PredictedBattleState is not null && guest.PredictedBattleState.IsGameplayEnabled);
+        }
+
+        private static void GameplayClientsCompleteFastBo3AndReturnToLobby()
+        {
+            BattleDefinition definition = SettlementLifecycleTests.CreateFastGameplayDefinition();
+            using var server = new TcpDemoServer(SessionRoomTests.CreateOptions(
+                maxSessions: 2, maxRooms: 1, maxRoomCapacity: 2,
+                battleDefinition: definition,
+                battleReadyTimeout: TimeSpan.FromSeconds(5),
+                battleDurationTicks: 100));
+            using var host = CreateGameplayClient(server.ControlPort, definition);
+            using var guest = CreateGameplayClient(server.ControlPort, definition);
+            ConnectAndEnter(server, host, "FastHost");
+            ConnectAndEnter(server, guest, "FastGuest");
+            host.CreateRoom("FastRoom", 2);
+            PumpUntil(server, host, guest, () => host.Phase == DemoClientPhase.Room);
+            guest.JoinRoom(host.Snapshot.RoomId);
+            PumpUntil(server, host, guest, () => guest.Phase == DemoClientPhase.Room);
+            host.SetReady(true);
+            guest.SetReady(true);
+            Pump(server, host, guest, 20);
+            host.StartBattle();
+            PumpUntil(server, host, guest, () =>
+                host.Phase == DemoClientPhase.PreparingBattle &&
+                guest.Phase == DemoClientPhase.PreparingBattle);
+            host.MarkBattleSceneReady();
+            guest.MarkBattleSceneReady();
+            PumpUntil(server, host, guest, () =>
+                host.Phase == DemoClientPhase.InBattle &&
+                guest.Phase == DemoClientPhase.InBattle);
+
+            BattlePreparation preparation = server.GetRoom(host.Snapshot.RoomId).Preparation!;
+            SettlementLifecycleTests.StopBattleClock(preparation);
+            for (int iteration = 0; iteration < 5000 &&
+                (host.Phase != DemoClientPhase.Settlement || guest.Phase != DemoClientPhase.Settlement);
+                iteration++)
+            {
+                BattleState hostState = host.PredictedBattleState!;
+                BattleState guestState = guest.PredictedBattleState!;
+                LocalInputSample hostInput = new LocalInputSample(0, 0, 0,
+                    hostState.Phase == BattlePhase.Playing);
+                LocalInputSample guestInput = new LocalInputSample(0, 0, 32768,
+                    false);
+                host.PumpOnce(hostInput);
+                guest.PumpOnce(guestInput);
+                SettlementLifecycleTests.ForceNextPollAdvances(preparation, 1U);
+                server.PumpOnce();
+            }
+
+            TestAssert.Equal(DemoClientPhase.Settlement, host.Phase);
+            TestAssert.Equal(DemoClientPhase.Settlement, guest.Phase);
+            TestAssert.True(host.Snapshot.SettlementVerified);
+            TestAssert.True(guest.Snapshot.SettlementVerified);
+            TestAssert.Equal(BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted,
+                host.Snapshot.SettlementReason);
+            TestAssert.Equal(host.Snapshot.SessionId, host.Snapshot.WinnerPlayerId);
+            TestAssert.Equal(2U, host.Snapshot.Slot0RoundWins);
+            TestAssert.Equal(0U, host.Snapshot.Slot1RoundWins);
+            TestAssert.Equal(BattlePhase.MatchEnded, host.PredictedBattleState!.Phase);
+
+            host.ReturnToLobby();
+            guest.ReturnToLobby();
+            PumpUntil(server, host, guest, () =>
+                host.Phase == DemoClientPhase.Lobby && guest.Phase == DemoClientPhase.Lobby);
+            TestAssert.Equal(0UL, host.Snapshot.RoomId);
+            TestAssert.Equal(0UL, guest.Snapshot.RoomId);
+        }
+
+        private static TcpClient Attach(TcpDemoServer server, byte[] ticket)
+        {
+            var client = new TcpClient(AddressFamily.InterNetwork);
+            client.Connect(server.BindAddress, server.BattlePort);
+            client.GetStream().Write(ticket, 0, ticket.Length);
+            for (int index = 0; index < 100; index++) server.PumpOnce();
+            TestAssert.Equal(1, client.GetStream().ReadByte());
+            return client;
+        }
+
         private static void PreparingBattleExplicitLeaveIsRejected()
         {
             using var fixture = new PreparedFixture();
@@ -223,14 +410,6 @@ namespace LockstepArena.DemoFlow.Tests
             for (int index = 0; index < 100 && host.Phase != DemoSessionPhase.Closed; index++) server.PumpOnce();
             TestAssert.True(preparation.IsInvalidated);
             TestAssert.Equal(0, server.RoomCount);
-            TestAssert.Equal(DemoSessionPhase.Settlement, guest.Phase);
-            TestAssert.Equal(0UL, guest.RoomId);
-
-            SessionRoomTests.WriteCommand(guestControl, new ClientControlCommandMessage
-            {
-                ReturnToLobby = new ReturnToLobbyCommandMessage(),
-            });
-            for (int index = 0; index < 100 && guest.Phase != DemoSessionPhase.Lobby; index++) server.PumpOnce();
             TestAssert.Equal(DemoSessionPhase.Lobby, guest.Phase);
             TestAssert.Equal(0UL, guest.RoomId);
             TestAssert.Equal(1, server.SessionCount);
@@ -270,8 +449,8 @@ namespace LockstepArena.DemoFlow.Tests
                 TestAssert.True(preparation.IsInvalidated);
                 TestAssert.Equal(0, server.RoomCount);
                 TestAssert.Equal(DemoSessionPhase.Closed, host.Phase);
-                TestAssert.Equal(DemoSessionPhase.Closed, guest.Phase);
-                TestAssert.Equal(0, server.SessionCount);
+                TestAssert.Equal(enterBattle ? DemoSessionPhase.Closed : DemoSessionPhase.Lobby, guest.Phase);
+                TestAssert.Equal(enterBattle ? 0 : 1, server.SessionCount);
             }
             finally
             {
@@ -428,6 +607,14 @@ namespace LockstepArena.DemoFlow.Tests
         private static TcpDemoClient CreateClient(int controlPort)
         {
             return new TcpDemoClient(new DemoClientOptions(controlPort, 1024, 2048, 128, 3, 64, 4, 64, 4, 4, 8, 16, 1024, 32, 3, 8));
+        }
+
+        private static TcpDemoClient CreateGameplayClient(int controlPort, BattleDefinition definition)
+        {
+            return new TcpDemoClient(new DemoClientOptions(
+                controlPort, 1024, 2048, 128, 3, 64, 4, 64,
+                8, 8, 16, 128, 1024, 32, 3, 8,
+                "127.0.0.1", definition));
         }
 
         private static void ConnectAndEnter(TcpDemoServer server, TcpDemoClient client, string nickname)

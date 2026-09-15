@@ -1,10 +1,13 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
+using LockstepArena.Simulation;
 
 namespace LockstepArena.Client.Demo
 {
     public sealed class DemoClientOptions
     {
-        public DemoClientOptions(int controlPort, int maxControlPayloadLength, int maxPendingControlBytes, int controlReceiveBufferLength, int controlReceiveOffset, int controlReceiveReadCapacity, int maxControlMessagesPerPump, int maxControlSendBytesPerPump, int maxPredictionTicks, int maxAuthoritativeFramesPerUpdate, int maxPendingAuthoritativeFrames, int maxReplayFrames, int maxBattlePayloadLength, int battleReceiveBufferLength, int battleReceiveOffset, int battleReceiveReadCapacity)
+        public DemoClientOptions(int controlPort, int maxControlPayloadLength, int maxPendingControlBytes, int controlReceiveBufferLength, int controlReceiveOffset, int controlReceiveReadCapacity, int maxControlMessagesPerPump, int maxControlSendBytesPerPump, int maxPredictionTicks, int maxAuthoritativeFramesPerUpdate, int maxPendingAuthoritativeFrames, int maxReplayFrames, int maxBattlePayloadLength, int battleReceiveBufferLength, int battleReceiveOffset, int battleReceiveReadCapacity, string serverAddress = "127.0.0.1", BattleDefinition? battleDefinition = null)
         {
             if (controlPort < 1 || controlPort > ushort.MaxValue) throw new ArgumentOutOfRangeException(nameof(controlPort));
             ValidatePayload(maxControlPayloadLength, nameof(maxControlPayloadLength));
@@ -18,6 +21,9 @@ namespace LockstepArena.Client.Demo
             RequirePositive(maxReplayFrames, nameof(maxReplayFrames));
             ValidatePayload(maxBattlePayloadLength, nameof(maxBattlePayloadLength));
             ValidateBuffer(battleReceiveBufferLength, battleReceiveOffset, battleReceiveReadCapacity, nameof(battleReceiveBufferLength), nameof(battleReceiveOffset), nameof(battleReceiveReadCapacity));
+            if (!IPAddress.TryParse(serverAddress, out IPAddress? parsedAddress) ||
+                parsedAddress.AddressFamily != AddressFamily.InterNetwork)
+                throw new ArgumentException("Server address must be a numeric IPv4 address.", nameof(serverAddress));
             ControlPort = controlPort;
             MaxControlPayloadLength = maxControlPayloadLength;
             MaxPendingControlBytes = maxPendingControlBytes;
@@ -34,6 +40,8 @@ namespace LockstepArena.Client.Demo
             BattleReceiveBufferLength = battleReceiveBufferLength;
             BattleReceiveOffset = battleReceiveOffset;
             BattleReceiveReadCapacity = battleReceiveReadCapacity;
+            ServerAddress = parsedAddress;
+            BattleDefinition = battleDefinition;
         }
 
         public int ControlPort { get; }
@@ -52,6 +60,8 @@ namespace LockstepArena.Client.Demo
         public int BattleReceiveBufferLength { get; }
         public int BattleReceiveOffset { get; }
         public int BattleReceiveReadCapacity { get; }
+        public IPAddress ServerAddress { get; }
+        public BattleDefinition? BattleDefinition { get; }
 
         private static void RequirePositive(int value, string name) { if (value < 1) throw new ArgumentOutOfRangeException(name); }
         private static void ValidatePayload(int value, string name) { if (value < 1 || value > int.MaxValue - 4) throw new ArgumentOutOfRangeException(name); }

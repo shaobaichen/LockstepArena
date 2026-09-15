@@ -13,6 +13,7 @@ namespace LockstepArena.Simulation.Tests
             new TestCase(nameof(LegacyInputFrameDefaultsFireToFalse), LegacyInputFrameDefaultsFireToFalse),
             new TestCase(nameof(GameplayInitialStateUsesRosterSlotsWithoutPlayerBranches), GameplayInitialStateUsesRosterSlotsWithoutPlayerBranches),
             new TestCase(nameof(GameplayInitialStateFacesVerticalSpawnsTowardEachOther), GameplayInitialStateFacesVerticalSpawnsTowardEachOther),
+            new TestCase(nameof(BattleConfigHashMatchesEqualDefinitionsAndChangesWithGameplayOrArena), BattleConfigHashMatchesEqualDefinitionsAndChangesWithGameplayOrArena),
         };
 
         private static void GameplayConfigRejectsInvalidGeometryAndDurations()
@@ -90,6 +91,30 @@ namespace LockstepArena.Simulation.Tests
 
             AssertPlayer(state, 0, 0, -400, 100, 0, 0, 16_384);
             AssertPlayer(state, 1, 0, 400, 100, 0, 0, 49_152);
+        }
+
+        private static void BattleConfigHashMatchesEqualDefinitionsAndChangesWithGameplayOrArena()
+        {
+            BattleDefinition first = BattleDefinition.CreateDefault();
+            BattleDefinition second = BattleDefinition.CreateDefault();
+            ulong expected = BattleConfigHash.Compute(first);
+
+            TestAssert.Equal(expected, BattleConfigHash.Compute(second));
+            TestAssert.NotEqual(expected, BattleConfigHash.Compute(new BattleDefinition(
+                new GameplayConfig(101, 25, 100, 6, 300, 45, 100, 20, 70, 5, 1_800, 90, 30, 2),
+                second.Arena)));
+            TestAssert.NotEqual(expected, BattleConfigHash.Compute(new BattleDefinition(
+                second.Gameplay,
+                new ArenaConfig(
+                    "symmetric-v2",
+                    second.Arena.Bounds,
+                    new[] { second.Arena.GetSpawn(0), second.Arena.GetSpawn(1) },
+                    new[]
+                    {
+                        second.Arena.GetObstacle(0),
+                        second.Arena.GetObstacle(1),
+                        second.Arena.GetObstacle(2),
+                    }))));
         }
 
         internal static GameplayConfig Config(

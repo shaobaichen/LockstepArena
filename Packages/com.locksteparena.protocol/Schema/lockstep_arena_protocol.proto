@@ -44,6 +44,7 @@ message ClientControlCommandMessage {
     StartBattleCommandMessage start_battle = 7;
     ReturnToLobbyCommandMessage return_to_lobby = 8;
     ExitSessionCommandMessage exit_session = 9;
+    BattleReadyCommandMessage battle_ready = 10;
   }
 }
 
@@ -56,6 +57,10 @@ message SetReadyCommandMessage { bool is_ready = 1; }
 message StartBattleCommandMessage {}
 message ReturnToLobbyCommandMessage {}
 message ExitSessionCommandMessage {}
+message BattleReadyCommandMessage {
+  uint64 battle_id = 1;
+  fixed64 battle_config_hash = 2;
+}
 
 message ServerControlEventMessage {
   oneof event {
@@ -119,6 +124,7 @@ message BattleBootstrapMessage {
   uint32 battle_duration_ticks = 5;
   uint32 input_delay_ticks = 6;
   uint32 final_state_tick = 7;
+  fixed64 battle_config_hash = 8;
 }
 message BattlePreparingEventMessage {
   uint64 room_id = 1;
@@ -140,6 +146,8 @@ enum BattleSettlementReasonMessage {
   BATTLE_SETTLEMENT_REASON_UNSPECIFIED = 0;
   BATTLE_SETTLEMENT_REASON_TICK_LIMIT_REACHED = 1;
   BATTLE_SETTLEMENT_REASON_ABORTED = 2;
+  BATTLE_SETTLEMENT_REASON_MATCH_COMPLETED = 3;
+  BATTLE_SETTLEMENT_REASON_DISCONNECT_FORFEIT = 4;
 }
 message SettlementPlayerStateMessage {
   uint32 player_slot = 1;
@@ -158,6 +166,9 @@ message BattleSettlementEventMessage {
   BattleSettlementReasonMessage reason = 2;
   FinalBattleStateMessage final_state = 3;
   string detail = 4;
+  uint64 winner_player_id = 5;
+  uint32 slot0_round_wins = 6;
+  uint32 slot1_round_wins = 7;
 }
 
 enum ControlRejectReasonMessage {

@@ -37,7 +37,7 @@ namespace LockstepArena.Protocol.Wire {
             "aXZlRnJhbWVNZXNzYWdlEgwKBHRpY2sYASABKA0SOwoGcm9zdGVyGAIgASgL",
             "MisubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5BY3RpdmVSb3N0ZXJNZXNzYWdl",
             "EjkKBmlucHV0cxgDIAMoCzIpLmxvY2tzdGVwYXJlbmEucHJvdG9jb2wuSW5w",
-            "dXRGcmFtZU1lc3NhZ2UiyQUKG0NsaWVudENvbnRyb2xDb21tYW5kTWVzc2Fn",
+            "dXRGcmFtZU1lc3NhZ2UilAYKG0NsaWVudENvbnRyb2xDb21tYW5kTWVzc2Fn",
             "ZRJLCg1lbnRlcl9zZXNzaW9uGAEgASgLMjIubG9ja3N0ZXBhcmVuYS5wcm90",
             "b2NvbC5FbnRlclNlc3Npb25Db21tYW5kTWVzc2FnZUgAElIKEXJlcXVlc3Rf",
             "cm9vbV9saXN0GAIgASgLMjUubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5SZXF1",
@@ -52,95 +52,103 @@ namespace LockstepArena.Protocol.Wire {
             "cnRCYXR0bGVDb21tYW5kTWVzc2FnZUgAEk4KD3JldHVybl90b19sb2JieRgI",
             "IAEoCzIzLmxvY2tzdGVwYXJlbmEucHJvdG9jb2wuUmV0dXJuVG9Mb2JieUNv",
             "bW1hbmRNZXNzYWdlSAASSQoMZXhpdF9zZXNzaW9uGAkgASgLMjEubG9ja3N0",
-            "ZXBhcmVuYS5wcm90b2NvbC5FeGl0U2Vzc2lvbkNvbW1hbmRNZXNzYWdlSABC",
-            "CQoHY29tbWFuZCIuChpFbnRlclNlc3Npb25Db21tYW5kTWVzc2FnZRIQCghu",
-            "aWNrbmFtZRgBIAEoCSIfCh1SZXF1ZXN0Um9vbUxpc3RDb21tYW5kTWVzc2Fn",
-            "ZSI/ChhDcmVhdGVSb29tQ29tbWFuZE1lc3NhZ2USEQoJcm9vbV9uYW1lGAEg",
-            "ASgJEhAKCGNhcGFjaXR5GAIgASgNIikKFkpvaW5Sb29tQ29tbWFuZE1lc3Nh",
-            "Z2USDwoHcm9vbV9pZBgBIAEoBCIZChdMZWF2ZVJvb21Db21tYW5kTWVzc2Fn",
-            "ZSIqChZTZXRSZWFkeUNvbW1hbmRNZXNzYWdlEhAKCGlzX3JlYWR5GAEgASgI",
-            "IhsKGVN0YXJ0QmF0dGxlQ29tbWFuZE1lc3NhZ2UiHQobUmV0dXJuVG9Mb2Ji",
-            "eUNvbW1hbmRNZXNzYWdlIhsKGUV4aXRTZXNzaW9uQ29tbWFuZE1lc3NhZ2Ui",
-            "2QUKGVNlcnZlckNvbnRyb2xFdmVudE1lc3NhZ2USTQoPc2Vzc2lvbl9lbnRl",
-            "cmVkGAEgASgLMjIubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5TZXNzaW9uRW50",
-            "ZXJlZEV2ZW50TWVzc2FnZUgAEkEKCXJvb21fbGlzdBgCIAEoCzIsLmxvY2tz",
-            "dGVwYXJlbmEucHJvdG9jb2wuUm9vbUxpc3RFdmVudE1lc3NhZ2VIABJJCg1y",
-            "b29tX3NuYXBzaG90GAMgASgLMjAubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5S",
-            "b29tU25hcHNob3RFdmVudE1lc3NhZ2VIABJPChBiYXR0bGVfcHJlcGFyaW5n",
-            "GAQgASgLMjMubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5CYXR0bGVQcmVwYXJp",
-            "bmdFdmVudE1lc3NhZ2VIABJLCg5iYXR0bGVfc3RhcnRlZBgFIAEoCzIxLmxv",
-            "Y2tzdGVwYXJlbmEucHJvdG9jb2wuQmF0dGxlU3RhcnRlZEV2ZW50TWVzc2Fn",
-            "ZUgAEkkKDWJhdHRsZV9zdGF0dXMYBiABKAsyMC5sb2Nrc3RlcGFyZW5hLnBy",
-            "b3RvY29sLkJhdHRsZVN0YXR1c0V2ZW50TWVzc2FnZUgAElEKEWJhdHRsZV9z",
-            "ZXR0bGVtZW50GAcgASgLMjQubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5CYXR0",
-            "bGVTZXR0bGVtZW50RXZlbnRNZXNzYWdlSAASTwoQY29tbWFuZF9yZWplY3Rl",
-            "ZBgIIAEoCzIzLmxvY2tzdGVwYXJlbmEucHJvdG9jb2wuQ29tbWFuZFJlamVj",
-            "dGVkRXZlbnRNZXNzYWdlSAASSQoNbG9iYnlfZW50ZXJlZBgJIAEoCzIwLmxv",
-            "Y2tzdGVwYXJlbmEucHJvdG9jb2wuTG9iYnlFbnRlcmVkRXZlbnRNZXNzYWdl",
-            "SABCBwoFZXZlbnQiQgoaU2Vzc2lvbkVudGVyZWRFdmVudE1lc3NhZ2USEgoK",
-            "c2Vzc2lvbl9pZBgBIAEoBBIQCghuaWNrbmFtZRgCIAEoCSK9AQoSUm9vbVN1",
-            "bW1hcnlNZXNzYWdlEg8KB3Jvb21faWQYASABKAQSEQoJcm9vbV9uYW1lGAIg",
-            "ASgJEhUKDWhvc3Rfbmlja25hbWUYAyABKAkSGQoRcGFydGljaXBhbnRfY291",
-            "bnQYBCABKA0SEAoIY2FwYWNpdHkYBSABKA0SPwoJbGlmZWN5Y2xlGAYgASgO",
-            "MiwubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5Sb29tTGlmZWN5Y2xlTWVzc2Fn",
-            "ZSJRChRSb29tTGlzdEV2ZW50TWVzc2FnZRI5CgVyb29tcxgBIAMoCzIqLmxv",
-            "Y2tzdGVwYXJlbmEucHJvdG9jb2wuUm9vbVN1bW1hcnlNZXNzYWdlIncKFlJv",
-            "b21QYXJ0aWNpcGFudE1lc3NhZ2USEgoKc2Vzc2lvbl9pZBgBIAEoBBIQCghu",
-            "aWNrbmFtZRgCIAEoCRIPCgdpc19ob3N0GAMgASgIEhAKCGlzX3JlYWR5GAQg",
-            "ASgIEhQKDGpvaW5fb3JkaW5hbBgFIAEoDSLwAQoYUm9vbVNuYXBzaG90RXZl",
-            "bnRNZXNzYWdlEg8KB3Jvb21faWQYASABKAQSEQoJcm9vbV9uYW1lGAIgASgJ",
-            "EhcKD2hvc3Rfc2Vzc2lvbl9pZBgDIAEoBBIQCghjYXBhY2l0eRgEIAEoDRI/",
-            "CglsaWZlY3ljbGUYBSABKA4yLC5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLlJv",
-            "b21MaWZlY3ljbGVNZXNzYWdlEkQKDHBhcnRpY2lwYW50cxgGIAMoCzIuLmxv",
-            "Y2tzdGVwYXJlbmEucHJvdG9jb2wuUm9vbVBhcnRpY2lwYW50TWVzc2FnZSJl",
-            "ChlJbml0aWFsUGxheWVyU3RhdGVNZXNzYWdlEhMKC3BsYXllcl9zbG90GAEg",
-            "ASgNEhIKCnBvc2l0aW9uX3gYAiABKBESEgoKcG9zaXRpb25fehgDIAEoERIL",
-            "CgNhaW0YBCABKA0inAIKFkJhdHRsZUJvb3RzdHJhcE1lc3NhZ2USEQoJYmF0",
-            "dGxlX2lkGAEgASgEEjsKBnJvc3RlchgCIAEoCzIrLmxvY2tzdGVwYXJlbmEu",
-            "cHJvdG9jb2wuQWN0aXZlUm9zdGVyTWVzc2FnZRJICg1wbGF5ZXJfc3RhdGVz",
-            "GAMgAygLMjEubG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5Jbml0aWFsUGxheWVy",
-            "U3RhdGVNZXNzYWdlEhQKDGluaXRpYWxfdGljaxgEIAEoDRIdChViYXR0bGVf",
-            "ZHVyYXRpb25fdGlja3MYBSABKA0SGQoRaW5wdXRfZGVsYXlfdGlja3MYBiAB",
-            "KA0SGAoQZmluYWxfc3RhdGVfdGljaxgHIAEoDSLkAQobQmF0dGxlUHJlcGFy",
-            "aW5nRXZlbnRNZXNzYWdlEg8KB3Jvb21faWQYASABKAQSEQoJYmF0dGxlX2lk",
-            "GAIgASgEEhUKDWJhdHRsZV90aWNrZXQYAyABKAwSEwoLYmF0dGxlX3BvcnQY",
-            "BCABKA0SFwoPbG9jYWxfcGxheWVyX2lkGAUgASgEEhkKEWxvY2FsX3BsYXll",
-            "cl9zbG90GAYgASgNEkEKCWJvb3RzdHJhcBgHIAEoCzIuLmxvY2tzdGVwYXJl",
-            "bmEucHJvdG9jb2wuQmF0dGxlQm9vdHN0cmFwTWVzc2FnZSIuChlCYXR0bGVT",
-            "dGFydGVkRXZlbnRNZXNzYWdlEhEKCWJhdHRsZV9pZBgBIAEoBCJjChhCYXR0",
-            "bGVTdGF0dXNFdmVudE1lc3NhZ2USEQoJYmF0dGxlX2lkGAEgASgEEhkKEXNl",
-            "cnZlcl9zdGF0ZV90aWNrGAIgASgNEhkKEW5leHRfcHVibGlzaF90aWNrGAMg",
-            "ASgNInsKHFNldHRsZW1lbnRQbGF5ZXJTdGF0ZU1lc3NhZ2USEwoLcGxheWVy",
-            "X3Nsb3QYASABKA0SEQoJcGxheWVyX2lkGAIgASgEEhIKCnBvc2l0aW9uX3gY",
-            "AyABKBESEgoKcG9zaXRpb25fehgEIAEoERILCgNhaW0YBSABKA0iigEKF0Zp",
-            "bmFsQmF0dGxlU3RhdGVNZXNzYWdlEgwKBHRpY2sYASABKA0SFAoMc3RhdGVf",
-            "ZGlnZXN0GAIgASgGEksKDXBsYXllcl9zdGF0ZXMYAyADKAsyNC5sb2Nrc3Rl",
-            "cGFyZW5hLnByb3RvY29sLlNldHRsZW1lbnRQbGF5ZXJTdGF0ZU1lc3NhZ2Ui",
-            "zgEKHEJhdHRsZVNldHRsZW1lbnRFdmVudE1lc3NhZ2USEQoJYmF0dGxlX2lk",
-            "GAEgASgEEkUKBnJlYXNvbhgCIAEoDjI1LmxvY2tzdGVwYXJlbmEucHJvdG9j",
-            "b2wuQmF0dGxlU2V0dGxlbWVudFJlYXNvbk1lc3NhZ2USRAoLZmluYWxfc3Rh",
-            "dGUYAyABKAsyLy5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLkZpbmFsQmF0dGxl",
-            "U3RhdGVNZXNzYWdlEg4KBmRldGFpbBgEIAEoCSJxChtDb21tYW5kUmVqZWN0",
-            "ZWRFdmVudE1lc3NhZ2USQgoGcmVhc29uGAEgASgOMjIubG9ja3N0ZXBhcmVu",
-            "YS5wcm90b2NvbC5Db250cm9sUmVqZWN0UmVhc29uTWVzc2FnZRIOCgZkZXRh",
-            "aWwYAiABKAkiGgoYTG9iYnlFbnRlcmVkRXZlbnRNZXNzYWdlKq4BChRSb29t",
-            "TGlmZWN5Y2xlTWVzc2FnZRIeChpST09NX0xJRkVDWUNMRV9VTlNQRUNJRklF",
-            "RBAAEhcKE1JPT01fTElGRUNZQ0xFX09QRU4QARIjCh9ST09NX0xJRkVDWUNM",
-            "RV9QUkVQQVJJTkdfQkFUVExFEAISHAoYUk9PTV9MSUZFQ1lDTEVfSU5fQkFU",
-            "VExFEAMSGgoWUk9PTV9MSUZFQ1lDTEVfU0VUVExFRBAEKqABCh1CYXR0bGVT",
-            "ZXR0bGVtZW50UmVhc29uTWVzc2FnZRIoCiRCQVRUTEVfU0VUVExFTUVOVF9S",
-            "RUFTT05fVU5TUEVDSUZJRUQQABIvCitCQVRUTEVfU0VUVExFTUVOVF9SRUFT",
-            "T05fVElDS19MSU1JVF9SRUFDSEVEEAESJAogQkFUVExFX1NFVFRMRU1FTlRf",
-            "UkVBU09OX0FCT1JURUQQAiqCAwoaQ29udHJvbFJlamVjdFJlYXNvbk1lc3Nh",
-            "Z2USJQohQ09OVFJPTF9SRUpFQ1RfUkVBU09OX1VOU1BFQ0lGSUVEEAASJwoj",
-            "Q09OVFJPTF9SRUpFQ1RfUkVBU09OX0lOVkFMSURfUEhBU0UQARInCiNDT05U",
-            "Uk9MX1JFSkVDVF9SRUFTT05fSU5WQUxJRF9WQUxVRRACEikKJUNPTlRST0xf",
-            "UkVKRUNUX1JFQVNPTl9OSUNLTkFNRV9JTl9VU0UQAxIoCiRDT05UUk9MX1JF",
-            "SkVDVF9SRUFTT05fUk9PTV9OT1RfRk9VTkQQBBIjCh9DT05UUk9MX1JFSkVD",
-            "VF9SRUFTT05fUk9PTV9GVUxMEAUSIgoeQ09OVFJPTF9SRUpFQ1RfUkVBU09O",
-            "X05PVF9IT1NUEAYSIwofQ09OVFJPTF9SRUpFQ1RfUkVBU09OX05PVF9SRUFE",
-            "WRAHEigKJENPTlRST0xfUkVKRUNUX1JFQVNPTl9SRVNPVVJDRV9MSU1JVBAI",
-            "Qh6qAhtMb2Nrc3RlcEFyZW5hLlByb3RvY29sLldpcmViBnByb3RvMw=="));
+            "ZXBhcmVuYS5wcm90b2NvbC5FeGl0U2Vzc2lvbkNvbW1hbmRNZXNzYWdlSAAS",
+            "SQoMYmF0dGxlX3JlYWR5GAogASgLMjEubG9ja3N0ZXBhcmVuYS5wcm90b2Nv",
+            "bC5CYXR0bGVSZWFkeUNvbW1hbmRNZXNzYWdlSABCCQoHY29tbWFuZCIuChpF",
+            "bnRlclNlc3Npb25Db21tYW5kTWVzc2FnZRIQCghuaWNrbmFtZRgBIAEoCSIf",
+            "Ch1SZXF1ZXN0Um9vbUxpc3RDb21tYW5kTWVzc2FnZSI/ChhDcmVhdGVSb29t",
+            "Q29tbWFuZE1lc3NhZ2USEQoJcm9vbV9uYW1lGAEgASgJEhAKCGNhcGFjaXR5",
+            "GAIgASgNIikKFkpvaW5Sb29tQ29tbWFuZE1lc3NhZ2USDwoHcm9vbV9pZBgB",
+            "IAEoBCIZChdMZWF2ZVJvb21Db21tYW5kTWVzc2FnZSIqChZTZXRSZWFkeUNv",
+            "bW1hbmRNZXNzYWdlEhAKCGlzX3JlYWR5GAEgASgIIhsKGVN0YXJ0QmF0dGxl",
+            "Q29tbWFuZE1lc3NhZ2UiHQobUmV0dXJuVG9Mb2JieUNvbW1hbmRNZXNzYWdl",
+            "IhsKGUV4aXRTZXNzaW9uQ29tbWFuZE1lc3NhZ2UiSgoZQmF0dGxlUmVhZHlD",
+            "b21tYW5kTWVzc2FnZRIRCgliYXR0bGVfaWQYASABKAQSGgoSYmF0dGxlX2Nv",
+            "bmZpZ19oYXNoGAIgASgGItkFChlTZXJ2ZXJDb250cm9sRXZlbnRNZXNzYWdl",
+            "Ek0KD3Nlc3Npb25fZW50ZXJlZBgBIAEoCzIyLmxvY2tzdGVwYXJlbmEucHJv",
+            "dG9jb2wuU2Vzc2lvbkVudGVyZWRFdmVudE1lc3NhZ2VIABJBCglyb29tX2xp",
+            "c3QYAiABKAsyLC5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLlJvb21MaXN0RXZl",
+            "bnRNZXNzYWdlSAASSQoNcm9vbV9zbmFwc2hvdBgDIAEoCzIwLmxvY2tzdGVw",
+            "YXJlbmEucHJvdG9jb2wuUm9vbVNuYXBzaG90RXZlbnRNZXNzYWdlSAASTwoQ",
+            "YmF0dGxlX3ByZXBhcmluZxgEIAEoCzIzLmxvY2tzdGVwYXJlbmEucHJvdG9j",
+            "b2wuQmF0dGxlUHJlcGFyaW5nRXZlbnRNZXNzYWdlSAASSwoOYmF0dGxlX3N0",
+            "YXJ0ZWQYBSABKAsyMS5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLkJhdHRsZVN0",
+            "YXJ0ZWRFdmVudE1lc3NhZ2VIABJJCg1iYXR0bGVfc3RhdHVzGAYgASgLMjAu",
+            "bG9ja3N0ZXBhcmVuYS5wcm90b2NvbC5CYXR0bGVTdGF0dXNFdmVudE1lc3Nh",
+            "Z2VIABJRChFiYXR0bGVfc2V0dGxlbWVudBgHIAEoCzI0LmxvY2tzdGVwYXJl",
+            "bmEucHJvdG9jb2wuQmF0dGxlU2V0dGxlbWVudEV2ZW50TWVzc2FnZUgAEk8K",
+            "EGNvbW1hbmRfcmVqZWN0ZWQYCCABKAsyMy5sb2Nrc3RlcGFyZW5hLnByb3Rv",
+            "Y29sLkNvbW1hbmRSZWplY3RlZEV2ZW50TWVzc2FnZUgAEkkKDWxvYmJ5X2Vu",
+            "dGVyZWQYCSABKAsyMC5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLkxvYmJ5RW50",
+            "ZXJlZEV2ZW50TWVzc2FnZUgAQgcKBWV2ZW50IkIKGlNlc3Npb25FbnRlcmVk",
+            "RXZlbnRNZXNzYWdlEhIKCnNlc3Npb25faWQYASABKAQSEAoIbmlja25hbWUY",
+            "AiABKAkivQEKElJvb21TdW1tYXJ5TWVzc2FnZRIPCgdyb29tX2lkGAEgASgE",
+            "EhEKCXJvb21fbmFtZRgCIAEoCRIVCg1ob3N0X25pY2tuYW1lGAMgASgJEhkK",
+            "EXBhcnRpY2lwYW50X2NvdW50GAQgASgNEhAKCGNhcGFjaXR5GAUgASgNEj8K",
+            "CWxpZmVjeWNsZRgGIAEoDjIsLmxvY2tzdGVwYXJlbmEucHJvdG9jb2wuUm9v",
+            "bUxpZmVjeWNsZU1lc3NhZ2UiUQoUUm9vbUxpc3RFdmVudE1lc3NhZ2USOQoF",
+            "cm9vbXMYASADKAsyKi5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLlJvb21TdW1t",
+            "YXJ5TWVzc2FnZSJ3ChZSb29tUGFydGljaXBhbnRNZXNzYWdlEhIKCnNlc3Np",
+            "b25faWQYASABKAQSEAoIbmlja25hbWUYAiABKAkSDwoHaXNfaG9zdBgDIAEo",
+            "CBIQCghpc19yZWFkeRgEIAEoCBIUCgxqb2luX29yZGluYWwYBSABKA0i8AEK",
+            "GFJvb21TbmFwc2hvdEV2ZW50TWVzc2FnZRIPCgdyb29tX2lkGAEgASgEEhEK",
+            "CXJvb21fbmFtZRgCIAEoCRIXCg9ob3N0X3Nlc3Npb25faWQYAyABKAQSEAoI",
+            "Y2FwYWNpdHkYBCABKA0SPwoJbGlmZWN5Y2xlGAUgASgOMiwubG9ja3N0ZXBh",
+            "cmVuYS5wcm90b2NvbC5Sb29tTGlmZWN5Y2xlTWVzc2FnZRJECgxwYXJ0aWNp",
+            "cGFudHMYBiADKAsyLi5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLlJvb21QYXJ0",
+            "aWNpcGFudE1lc3NhZ2UiZQoZSW5pdGlhbFBsYXllclN0YXRlTWVzc2FnZRIT",
+            "CgtwbGF5ZXJfc2xvdBgBIAEoDRISCgpwb3NpdGlvbl94GAIgASgREhIKCnBv",
+            "c2l0aW9uX3oYAyABKBESCwoDYWltGAQgASgNIrgCChZCYXR0bGVCb290c3Ry",
+            "YXBNZXNzYWdlEhEKCWJhdHRsZV9pZBgBIAEoBBI7CgZyb3N0ZXIYAiABKAsy",
+            "Ky5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLkFjdGl2ZVJvc3Rlck1lc3NhZ2US",
+            "SAoNcGxheWVyX3N0YXRlcxgDIAMoCzIxLmxvY2tzdGVwYXJlbmEucHJvdG9j",
+            "b2wuSW5pdGlhbFBsYXllclN0YXRlTWVzc2FnZRIUCgxpbml0aWFsX3RpY2sY",
+            "BCABKA0SHQoVYmF0dGxlX2R1cmF0aW9uX3RpY2tzGAUgASgNEhkKEWlucHV0",
+            "X2RlbGF5X3RpY2tzGAYgASgNEhgKEGZpbmFsX3N0YXRlX3RpY2sYByABKA0S",
+            "GgoSYmF0dGxlX2NvbmZpZ19oYXNoGAggASgGIuQBChtCYXR0bGVQcmVwYXJp",
+            "bmdFdmVudE1lc3NhZ2USDwoHcm9vbV9pZBgBIAEoBBIRCgliYXR0bGVfaWQY",
+            "AiABKAQSFQoNYmF0dGxlX3RpY2tldBgDIAEoDBITCgtiYXR0bGVfcG9ydBgE",
+            "IAEoDRIXCg9sb2NhbF9wbGF5ZXJfaWQYBSABKAQSGQoRbG9jYWxfcGxheWVy",
+            "X3Nsb3QYBiABKA0SQQoJYm9vdHN0cmFwGAcgASgLMi4ubG9ja3N0ZXBhcmVu",
+            "YS5wcm90b2NvbC5CYXR0bGVCb290c3RyYXBNZXNzYWdlIi4KGUJhdHRsZVN0",
+            "YXJ0ZWRFdmVudE1lc3NhZ2USEQoJYmF0dGxlX2lkGAEgASgEImMKGEJhdHRs",
+            "ZVN0YXR1c0V2ZW50TWVzc2FnZRIRCgliYXR0bGVfaWQYASABKAQSGQoRc2Vy",
+            "dmVyX3N0YXRlX3RpY2sYAiABKA0SGQoRbmV4dF9wdWJsaXNoX3RpY2sYAyAB",
+            "KA0iewocU2V0dGxlbWVudFBsYXllclN0YXRlTWVzc2FnZRITCgtwbGF5ZXJf",
+            "c2xvdBgBIAEoDRIRCglwbGF5ZXJfaWQYAiABKAQSEgoKcG9zaXRpb25feBgD",
+            "IAEoERISCgpwb3NpdGlvbl96GAQgASgREgsKA2FpbRgFIAEoDSKKAQoXRmlu",
+            "YWxCYXR0bGVTdGF0ZU1lc3NhZ2USDAoEdGljaxgBIAEoDRIUCgxzdGF0ZV9k",
+            "aWdlc3QYAiABKAYSSwoNcGxheWVyX3N0YXRlcxgDIAMoCzI0LmxvY2tzdGVw",
+            "YXJlbmEucHJvdG9jb2wuU2V0dGxlbWVudFBsYXllclN0YXRlTWVzc2FnZSKc",
+            "AgocQmF0dGxlU2V0dGxlbWVudEV2ZW50TWVzc2FnZRIRCgliYXR0bGVfaWQY",
+            "ASABKAQSRQoGcmVhc29uGAIgASgOMjUubG9ja3N0ZXBhcmVuYS5wcm90b2Nv",
+            "bC5CYXR0bGVTZXR0bGVtZW50UmVhc29uTWVzc2FnZRJECgtmaW5hbF9zdGF0",
+            "ZRgDIAEoCzIvLmxvY2tzdGVwYXJlbmEucHJvdG9jb2wuRmluYWxCYXR0bGVT",
+            "dGF0ZU1lc3NhZ2USDgoGZGV0YWlsGAQgASgJEhgKEHdpbm5lcl9wbGF5ZXJf",
+            "aWQYBSABKAQSGAoQc2xvdDBfcm91bmRfd2lucxgGIAEoDRIYChBzbG90MV9y",
+            "b3VuZF93aW5zGAcgASgNInEKG0NvbW1hbmRSZWplY3RlZEV2ZW50TWVzc2Fn",
+            "ZRJCCgZyZWFzb24YASABKA4yMi5sb2Nrc3RlcGFyZW5hLnByb3RvY29sLkNv",
+            "bnRyb2xSZWplY3RSZWFzb25NZXNzYWdlEg4KBmRldGFpbBgCIAEoCSIaChhM",
+            "b2JieUVudGVyZWRFdmVudE1lc3NhZ2UqrgEKFFJvb21MaWZlY3ljbGVNZXNz",
+            "YWdlEh4KGlJPT01fTElGRUNZQ0xFX1VOU1BFQ0lGSUVEEAASFwoTUk9PTV9M",
+            "SUZFQ1lDTEVfT1BFThABEiMKH1JPT01fTElGRUNZQ0xFX1BSRVBBUklOR19C",
+            "QVRUTEUQAhIcChhST09NX0xJRkVDWUNMRV9JTl9CQVRUTEUQAxIaChZST09N",
+            "X0xJRkVDWUNMRV9TRVRUTEVEEAQq/wEKHUJhdHRsZVNldHRsZW1lbnRSZWFz",
+            "b25NZXNzYWdlEigKJEJBVFRMRV9TRVRUTEVNRU5UX1JFQVNPTl9VTlNQRUNJ",
+            "RklFRBAAEi8KK0JBVFRMRV9TRVRUTEVNRU5UX1JFQVNPTl9USUNLX0xJTUlU",
+            "X1JFQUNIRUQQARIkCiBCQVRUTEVfU0VUVExFTUVOVF9SRUFTT05fQUJPUlRF",
+            "RBACEiwKKEJBVFRMRV9TRVRUTEVNRU5UX1JFQVNPTl9NQVRDSF9DT01QTEVU",
+            "RUQQAxIvCitCQVRUTEVfU0VUVExFTUVOVF9SRUFTT05fRElTQ09OTkVDVF9G",
+            "T1JGRUlUEAQqggMKGkNvbnRyb2xSZWplY3RSZWFzb25NZXNzYWdlEiUKIUNP",
+            "TlRST0xfUkVKRUNUX1JFQVNPTl9VTlNQRUNJRklFRBAAEicKI0NPTlRST0xf",
+            "UkVKRUNUX1JFQVNPTl9JTlZBTElEX1BIQVNFEAESJwojQ09OVFJPTF9SRUpF",
+            "Q1RfUkVBU09OX0lOVkFMSURfVkFMVUUQAhIpCiVDT05UUk9MX1JFSkVDVF9S",
+            "RUFTT05fTklDS05BTUVfSU5fVVNFEAMSKAokQ09OVFJPTF9SRUpFQ1RfUkVB",
+            "U09OX1JPT01fTk9UX0ZPVU5EEAQSIwofQ09OVFJPTF9SRUpFQ1RfUkVBU09O",
+            "X1JPT01fRlVMTBAFEiIKHkNPTlRST0xfUkVKRUNUX1JFQVNPTl9OT1RfSE9T",
+            "VBAGEiMKH0NPTlRST0xfUkVKRUNUX1JFQVNPTl9OT1RfUkVBRFkQBxIoCiRD",
+            "T05UUk9MX1JFSkVDVF9SRUFTT05fUkVTT1VSQ0VfTElNSVQQCEIeqgIbTG9j",
+            "a3N0ZXBBcmVuYS5Qcm90b2NvbC5XaXJlYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::LockstepArena.Protocol.Wire.RoomLifecycleMessage), typeof(global::LockstepArena.Protocol.Wire.BattleSettlementReasonMessage), typeof(global::LockstepArena.Protocol.Wire.ControlRejectReasonMessage), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -149,7 +157,7 @@ namespace LockstepArena.Protocol.Wire {
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.InputFrameMessage), global::LockstepArena.Protocol.Wire.InputFrameMessage.Parser, new[]{ "Tick", "PlayerSlot", "MoveX", "MoveZ", "Aim", "Fire" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.PlayerInputSubmissionMessage), global::LockstepArena.Protocol.Wire.PlayerInputSubmissionMessage.Parser, new[]{ "SubmittedPlayerId", "Input" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.AuthoritativeFrameMessage), global::LockstepArena.Protocol.Wire.AuthoritativeFrameMessage.Parser, new[]{ "Tick", "Roster", "Inputs" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.ClientControlCommandMessage), global::LockstepArena.Protocol.Wire.ClientControlCommandMessage.Parser, new[]{ "EnterSession", "RequestRoomList", "CreateRoom", "JoinRoom", "LeaveRoom", "SetReady", "StartBattle", "ReturnToLobby", "ExitSession" }, new[]{ "Command" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.ClientControlCommandMessage), global::LockstepArena.Protocol.Wire.ClientControlCommandMessage.Parser, new[]{ "EnterSession", "RequestRoomList", "CreateRoom", "JoinRoom", "LeaveRoom", "SetReady", "StartBattle", "ReturnToLobby", "ExitSession", "BattleReady" }, new[]{ "Command" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.EnterSessionCommandMessage), global::LockstepArena.Protocol.Wire.EnterSessionCommandMessage.Parser, new[]{ "Nickname" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.RequestRoomListCommandMessage), global::LockstepArena.Protocol.Wire.RequestRoomListCommandMessage.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.CreateRoomCommandMessage), global::LockstepArena.Protocol.Wire.CreateRoomCommandMessage.Parser, new[]{ "RoomName", "Capacity" }, null, null, null, null),
@@ -159,6 +167,7 @@ namespace LockstepArena.Protocol.Wire {
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.StartBattleCommandMessage), global::LockstepArena.Protocol.Wire.StartBattleCommandMessage.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.ReturnToLobbyCommandMessage), global::LockstepArena.Protocol.Wire.ReturnToLobbyCommandMessage.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.ExitSessionCommandMessage), global::LockstepArena.Protocol.Wire.ExitSessionCommandMessage.Parser, null, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage), global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage.Parser, new[]{ "BattleId", "BattleConfigHash" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.ServerControlEventMessage), global::LockstepArena.Protocol.Wire.ServerControlEventMessage.Parser, new[]{ "SessionEntered", "RoomList", "RoomSnapshot", "BattlePreparing", "BattleStarted", "BattleStatus", "BattleSettlement", "CommandRejected", "LobbyEntered" }, new[]{ "Event" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.SessionEnteredEventMessage), global::LockstepArena.Protocol.Wire.SessionEnteredEventMessage.Parser, new[]{ "SessionId", "Nickname" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.RoomSummaryMessage), global::LockstepArena.Protocol.Wire.RoomSummaryMessage.Parser, new[]{ "RoomId", "RoomName", "HostNickname", "ParticipantCount", "Capacity", "Lifecycle" }, null, null, null, null),
@@ -166,13 +175,13 @@ namespace LockstepArena.Protocol.Wire {
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.RoomParticipantMessage), global::LockstepArena.Protocol.Wire.RoomParticipantMessage.Parser, new[]{ "SessionId", "Nickname", "IsHost", "IsReady", "JoinOrdinal" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.RoomSnapshotEventMessage), global::LockstepArena.Protocol.Wire.RoomSnapshotEventMessage.Parser, new[]{ "RoomId", "RoomName", "HostSessionId", "Capacity", "Lifecycle", "Participants" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.InitialPlayerStateMessage), global::LockstepArena.Protocol.Wire.InitialPlayerStateMessage.Parser, new[]{ "PlayerSlot", "PositionX", "PositionZ", "Aim" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleBootstrapMessage), global::LockstepArena.Protocol.Wire.BattleBootstrapMessage.Parser, new[]{ "BattleId", "Roster", "PlayerStates", "InitialTick", "BattleDurationTicks", "InputDelayTicks", "FinalStateTick" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleBootstrapMessage), global::LockstepArena.Protocol.Wire.BattleBootstrapMessage.Parser, new[]{ "BattleId", "Roster", "PlayerStates", "InitialTick", "BattleDurationTicks", "InputDelayTicks", "FinalStateTick", "BattleConfigHash" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattlePreparingEventMessage), global::LockstepArena.Protocol.Wire.BattlePreparingEventMessage.Parser, new[]{ "RoomId", "BattleId", "BattleTicket", "BattlePort", "LocalPlayerId", "LocalPlayerSlot", "Bootstrap" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleStartedEventMessage), global::LockstepArena.Protocol.Wire.BattleStartedEventMessage.Parser, new[]{ "BattleId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleStatusEventMessage), global::LockstepArena.Protocol.Wire.BattleStatusEventMessage.Parser, new[]{ "BattleId", "ServerStateTick", "NextPublishTick" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.SettlementPlayerStateMessage), global::LockstepArena.Protocol.Wire.SettlementPlayerStateMessage.Parser, new[]{ "PlayerSlot", "PlayerId", "PositionX", "PositionZ", "Aim" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.FinalBattleStateMessage), global::LockstepArena.Protocol.Wire.FinalBattleStateMessage.Parser, new[]{ "Tick", "StateDigest", "PlayerStates" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleSettlementEventMessage), global::LockstepArena.Protocol.Wire.BattleSettlementEventMessage.Parser, new[]{ "BattleId", "Reason", "FinalState", "Detail" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.BattleSettlementEventMessage), global::LockstepArena.Protocol.Wire.BattleSettlementEventMessage.Parser, new[]{ "BattleId", "Reason", "FinalState", "Detail", "WinnerPlayerId", "Slot0RoundWins", "Slot1RoundWins" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.CommandRejectedEventMessage), global::LockstepArena.Protocol.Wire.CommandRejectedEventMessage.Parser, new[]{ "Reason", "Detail" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::LockstepArena.Protocol.Wire.LobbyEnteredEventMessage), global::LockstepArena.Protocol.Wire.LobbyEnteredEventMessage.Parser, null, null, null, null, null)
           }));
@@ -193,6 +202,8 @@ namespace LockstepArena.Protocol.Wire {
     [pbr::OriginalName("BATTLE_SETTLEMENT_REASON_UNSPECIFIED")] BattleSettlementReasonUnspecified = 0,
     [pbr::OriginalName("BATTLE_SETTLEMENT_REASON_TICK_LIMIT_REACHED")] BattleSettlementReasonTickLimitReached = 1,
     [pbr::OriginalName("BATTLE_SETTLEMENT_REASON_ABORTED")] BattleSettlementReasonAborted = 2,
+    [pbr::OriginalName("BATTLE_SETTLEMENT_REASON_MATCH_COMPLETED")] BattleSettlementReasonMatchCompleted = 3,
+    [pbr::OriginalName("BATTLE_SETTLEMENT_REASON_DISCONNECT_FORFEIT")] BattleSettlementReasonDisconnectForfeit = 4,
   }
 
   public enum ControlRejectReasonMessage {
@@ -1592,6 +1603,9 @@ namespace LockstepArena.Protocol.Wire {
         case CommandOneofCase.ExitSession:
           ExitSession = other.ExitSession.Clone();
           break;
+        case CommandOneofCase.BattleReady:
+          BattleReady = other.BattleReady.Clone();
+          break;
       }
 
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
@@ -1711,6 +1725,18 @@ namespace LockstepArena.Protocol.Wire {
       }
     }
 
+    /// <summary>Field number for the "battle_ready" field.</summary>
+    public const int BattleReadyFieldNumber = 10;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage BattleReady {
+      get { return commandCase_ == CommandOneofCase.BattleReady ? (global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.BattleReady;
+      }
+    }
+
     private object command_;
     /// <summary>Enum of possible cases for the "command" oneof.</summary>
     public enum CommandOneofCase {
@@ -1724,6 +1750,7 @@ namespace LockstepArena.Protocol.Wire {
       StartBattle = 7,
       ReturnToLobby = 8,
       ExitSession = 9,
+      BattleReady = 10,
     }
     private CommandOneofCase commandCase_ = CommandOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1763,6 +1790,7 @@ namespace LockstepArena.Protocol.Wire {
       if (!object.Equals(StartBattle, other.StartBattle)) return false;
       if (!object.Equals(ReturnToLobby, other.ReturnToLobby)) return false;
       if (!object.Equals(ExitSession, other.ExitSession)) return false;
+      if (!object.Equals(BattleReady, other.BattleReady)) return false;
       if (CommandCase != other.CommandCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -1780,6 +1808,7 @@ namespace LockstepArena.Protocol.Wire {
       if (commandCase_ == CommandOneofCase.StartBattle) hash ^= StartBattle.GetHashCode();
       if (commandCase_ == CommandOneofCase.ReturnToLobby) hash ^= ReturnToLobby.GetHashCode();
       if (commandCase_ == CommandOneofCase.ExitSession) hash ^= ExitSession.GetHashCode();
+      if (commandCase_ == CommandOneofCase.BattleReady) hash ^= BattleReady.GetHashCode();
       hash ^= (int) commandCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1835,6 +1864,10 @@ namespace LockstepArena.Protocol.Wire {
         output.WriteRawTag(74);
         output.WriteMessage(ExitSession);
       }
+      if (commandCase_ == CommandOneofCase.BattleReady) {
+        output.WriteRawTag(82);
+        output.WriteMessage(BattleReady);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1881,6 +1914,10 @@ namespace LockstepArena.Protocol.Wire {
         output.WriteRawTag(74);
         output.WriteMessage(ExitSession);
       }
+      if (commandCase_ == CommandOneofCase.BattleReady) {
+        output.WriteRawTag(82);
+        output.WriteMessage(BattleReady);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1917,6 +1954,9 @@ namespace LockstepArena.Protocol.Wire {
       }
       if (commandCase_ == CommandOneofCase.ExitSession) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(ExitSession);
+      }
+      if (commandCase_ == CommandOneofCase.BattleReady) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(BattleReady);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1984,6 +2024,12 @@ namespace LockstepArena.Protocol.Wire {
             ExitSession = new global::LockstepArena.Protocol.Wire.ExitSessionCommandMessage();
           }
           ExitSession.MergeFrom(other.ExitSession);
+          break;
+        case CommandOneofCase.BattleReady:
+          if (BattleReady == null) {
+            BattleReady = new global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage();
+          }
+          BattleReady.MergeFrom(other.BattleReady);
           break;
       }
 
@@ -2087,6 +2133,15 @@ namespace LockstepArena.Protocol.Wire {
             ExitSession = subBuilder;
             break;
           }
+          case 82: {
+            global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage subBuilder = new global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage();
+            if (commandCase_ == CommandOneofCase.BattleReady) {
+              subBuilder.MergeFrom(BattleReady);
+            }
+            input.ReadMessage(subBuilder);
+            BattleReady = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -2185,6 +2240,15 @@ namespace LockstepArena.Protocol.Wire {
             }
             input.ReadMessage(subBuilder);
             ExitSession = subBuilder;
+            break;
+          }
+          case 82: {
+            global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage subBuilder = new global::LockstepArena.Protocol.Wire.BattleReadyCommandMessage();
+            if (commandCase_ == CommandOneofCase.BattleReady) {
+              subBuilder.MergeFrom(BattleReady);
+            }
+            input.ReadMessage(subBuilder);
+            BattleReady = subBuilder;
             break;
           }
         }
@@ -3829,6 +3893,241 @@ namespace LockstepArena.Protocol.Wire {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class BattleReadyCommandMessage : pb::IMessage<BattleReadyCommandMessage>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<BattleReadyCommandMessage> _parser = new pb::MessageParser<BattleReadyCommandMessage>(() => new BattleReadyCommandMessage());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<BattleReadyCommandMessage> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[15]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public BattleReadyCommandMessage() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public BattleReadyCommandMessage(BattleReadyCommandMessage other) : this() {
+      battleId_ = other.battleId_;
+      battleConfigHash_ = other.battleConfigHash_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public BattleReadyCommandMessage Clone() {
+      return new BattleReadyCommandMessage(this);
+    }
+
+    /// <summary>Field number for the "battle_id" field.</summary>
+    public const int BattleIdFieldNumber = 1;
+    private ulong battleId_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong BattleId {
+      get { return battleId_; }
+      set {
+        battleId_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "battle_config_hash" field.</summary>
+    public const int BattleConfigHashFieldNumber = 2;
+    private ulong battleConfigHash_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong BattleConfigHash {
+      get { return battleConfigHash_; }
+      set {
+        battleConfigHash_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as BattleReadyCommandMessage);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(BattleReadyCommandMessage other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (BattleId != other.BattleId) return false;
+      if (BattleConfigHash != other.BattleConfigHash) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (BattleId != 0UL) hash ^= BattleId.GetHashCode();
+      if (BattleConfigHash != 0UL) hash ^= BattleConfigHash.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (BattleId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(BattleId);
+      }
+      if (BattleConfigHash != 0UL) {
+        output.WriteRawTag(17);
+        output.WriteFixed64(BattleConfigHash);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (BattleId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(BattleId);
+      }
+      if (BattleConfigHash != 0UL) {
+        output.WriteRawTag(17);
+        output.WriteFixed64(BattleConfigHash);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (BattleId != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(BattleId);
+      }
+      if (BattleConfigHash != 0UL) {
+        size += 1 + 8;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(BattleReadyCommandMessage other) {
+      if (other == null) {
+        return;
+      }
+      if (other.BattleId != 0UL) {
+        BattleId = other.BattleId;
+      }
+      if (other.BattleConfigHash != 0UL) {
+        BattleConfigHash = other.BattleConfigHash;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            BattleId = input.ReadUInt64();
+            break;
+          }
+          case 17: {
+            BattleConfigHash = input.ReadFixed64();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            BattleId = input.ReadUInt64();
+            break;
+          }
+          case 17: {
+            BattleConfigHash = input.ReadFixed64();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class ServerControlEventMessage : pb::IMessage<ServerControlEventMessage>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -3843,7 +4142,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[15]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[16]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4508,7 +4807,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[16]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[17]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4743,7 +5042,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[17]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[18]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5126,7 +5425,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[18]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[19]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5313,7 +5612,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[19]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[20]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5659,7 +5958,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[20]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[21]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -6031,7 +6330,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[21]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[22]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -6340,7 +6639,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[22]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[23]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -6367,6 +6666,7 @@ namespace LockstepArena.Protocol.Wire {
       battleDurationTicks_ = other.battleDurationTicks_;
       inputDelayTicks_ = other.inputDelayTicks_;
       finalStateTick_ = other.finalStateTick_;
+      battleConfigHash_ = other.battleConfigHash_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -6459,6 +6759,18 @@ namespace LockstepArena.Protocol.Wire {
       }
     }
 
+    /// <summary>Field number for the "battle_config_hash" field.</summary>
+    public const int BattleConfigHashFieldNumber = 8;
+    private ulong battleConfigHash_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong BattleConfigHash {
+      get { return battleConfigHash_; }
+      set {
+        battleConfigHash_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -6481,6 +6793,7 @@ namespace LockstepArena.Protocol.Wire {
       if (BattleDurationTicks != other.BattleDurationTicks) return false;
       if (InputDelayTicks != other.InputDelayTicks) return false;
       if (FinalStateTick != other.FinalStateTick) return false;
+      if (BattleConfigHash != other.BattleConfigHash) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -6495,6 +6808,7 @@ namespace LockstepArena.Protocol.Wire {
       if (BattleDurationTicks != 0) hash ^= BattleDurationTicks.GetHashCode();
       if (InputDelayTicks != 0) hash ^= InputDelayTicks.GetHashCode();
       if (FinalStateTick != 0) hash ^= FinalStateTick.GetHashCode();
+      if (BattleConfigHash != 0UL) hash ^= BattleConfigHash.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -6538,6 +6852,10 @@ namespace LockstepArena.Protocol.Wire {
         output.WriteRawTag(56);
         output.WriteUInt32(FinalStateTick);
       }
+      if (BattleConfigHash != 0UL) {
+        output.WriteRawTag(65);
+        output.WriteFixed64(BattleConfigHash);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -6573,6 +6891,10 @@ namespace LockstepArena.Protocol.Wire {
         output.WriteRawTag(56);
         output.WriteUInt32(FinalStateTick);
       }
+      if (BattleConfigHash != 0UL) {
+        output.WriteRawTag(65);
+        output.WriteFixed64(BattleConfigHash);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -6601,6 +6923,9 @@ namespace LockstepArena.Protocol.Wire {
       }
       if (FinalStateTick != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(FinalStateTick);
+      }
+      if (BattleConfigHash != 0UL) {
+        size += 1 + 8;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -6635,6 +6960,9 @@ namespace LockstepArena.Protocol.Wire {
       }
       if (other.FinalStateTick != 0) {
         FinalStateTick = other.FinalStateTick;
+      }
+      if (other.BattleConfigHash != 0UL) {
+        BattleConfigHash = other.BattleConfigHash;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -6684,6 +7012,10 @@ namespace LockstepArena.Protocol.Wire {
           }
           case 56: {
             FinalStateTick = input.ReadUInt32();
+            break;
+          }
+          case 65: {
+            BattleConfigHash = input.ReadFixed64();
             break;
           }
         }
@@ -6736,6 +7068,10 @@ namespace LockstepArena.Protocol.Wire {
             FinalStateTick = input.ReadUInt32();
             break;
           }
+          case 65: {
+            BattleConfigHash = input.ReadFixed64();
+            break;
+          }
         }
       }
     }
@@ -6758,7 +7094,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[23]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[24]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -7187,7 +7523,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[24]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[25]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -7385,7 +7721,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[25]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[26]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -7657,7 +7993,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[26]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[27]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8003,7 +8339,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[27]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[28]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8264,7 +8600,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[28]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[29]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8288,6 +8624,9 @@ namespace LockstepArena.Protocol.Wire {
       reason_ = other.reason_;
       finalState_ = other.finalState_ != null ? other.finalState_.Clone() : null;
       detail_ = other.detail_;
+      winnerPlayerId_ = other.winnerPlayerId_;
+      slot0RoundWins_ = other.slot0RoundWins_;
+      slot1RoundWins_ = other.slot1RoundWins_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -8345,6 +8684,42 @@ namespace LockstepArena.Protocol.Wire {
       }
     }
 
+    /// <summary>Field number for the "winner_player_id" field.</summary>
+    public const int WinnerPlayerIdFieldNumber = 5;
+    private ulong winnerPlayerId_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong WinnerPlayerId {
+      get { return winnerPlayerId_; }
+      set {
+        winnerPlayerId_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "slot0_round_wins" field.</summary>
+    public const int Slot0RoundWinsFieldNumber = 6;
+    private uint slot0RoundWins_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Slot0RoundWins {
+      get { return slot0RoundWins_; }
+      set {
+        slot0RoundWins_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "slot1_round_wins" field.</summary>
+    public const int Slot1RoundWinsFieldNumber = 7;
+    private uint slot1RoundWins_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Slot1RoundWins {
+      get { return slot1RoundWins_; }
+      set {
+        slot1RoundWins_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -8364,6 +8739,9 @@ namespace LockstepArena.Protocol.Wire {
       if (Reason != other.Reason) return false;
       if (!object.Equals(FinalState, other.FinalState)) return false;
       if (Detail != other.Detail) return false;
+      if (WinnerPlayerId != other.WinnerPlayerId) return false;
+      if (Slot0RoundWins != other.Slot0RoundWins) return false;
+      if (Slot1RoundWins != other.Slot1RoundWins) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -8375,6 +8753,9 @@ namespace LockstepArena.Protocol.Wire {
       if (Reason != global::LockstepArena.Protocol.Wire.BattleSettlementReasonMessage.BattleSettlementReasonUnspecified) hash ^= Reason.GetHashCode();
       if (finalState_ != null) hash ^= FinalState.GetHashCode();
       if (Detail.Length != 0) hash ^= Detail.GetHashCode();
+      if (WinnerPlayerId != 0UL) hash ^= WinnerPlayerId.GetHashCode();
+      if (Slot0RoundWins != 0) hash ^= Slot0RoundWins.GetHashCode();
+      if (Slot1RoundWins != 0) hash ^= Slot1RoundWins.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -8409,6 +8790,18 @@ namespace LockstepArena.Protocol.Wire {
         output.WriteRawTag(34);
         output.WriteString(Detail);
       }
+      if (WinnerPlayerId != 0UL) {
+        output.WriteRawTag(40);
+        output.WriteUInt64(WinnerPlayerId);
+      }
+      if (Slot0RoundWins != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(Slot0RoundWins);
+      }
+      if (Slot1RoundWins != 0) {
+        output.WriteRawTag(56);
+        output.WriteUInt32(Slot1RoundWins);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -8435,6 +8828,18 @@ namespace LockstepArena.Protocol.Wire {
         output.WriteRawTag(34);
         output.WriteString(Detail);
       }
+      if (WinnerPlayerId != 0UL) {
+        output.WriteRawTag(40);
+        output.WriteUInt64(WinnerPlayerId);
+      }
+      if (Slot0RoundWins != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(Slot0RoundWins);
+      }
+      if (Slot1RoundWins != 0) {
+        output.WriteRawTag(56);
+        output.WriteUInt32(Slot1RoundWins);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -8456,6 +8861,15 @@ namespace LockstepArena.Protocol.Wire {
       }
       if (Detail.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Detail);
+      }
+      if (WinnerPlayerId != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(WinnerPlayerId);
+      }
+      if (Slot0RoundWins != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Slot0RoundWins);
+      }
+      if (Slot1RoundWins != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Slot1RoundWins);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -8483,6 +8897,15 @@ namespace LockstepArena.Protocol.Wire {
       }
       if (other.Detail.Length != 0) {
         Detail = other.Detail;
+      }
+      if (other.WinnerPlayerId != 0UL) {
+        WinnerPlayerId = other.WinnerPlayerId;
+      }
+      if (other.Slot0RoundWins != 0) {
+        Slot0RoundWins = other.Slot0RoundWins;
+      }
+      if (other.Slot1RoundWins != 0) {
+        Slot1RoundWins = other.Slot1RoundWins;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -8520,6 +8943,18 @@ namespace LockstepArena.Protocol.Wire {
           }
           case 34: {
             Detail = input.ReadString();
+            break;
+          }
+          case 40: {
+            WinnerPlayerId = input.ReadUInt64();
+            break;
+          }
+          case 48: {
+            Slot0RoundWins = input.ReadUInt32();
+            break;
+          }
+          case 56: {
+            Slot1RoundWins = input.ReadUInt32();
             break;
           }
         }
@@ -8560,6 +8995,18 @@ namespace LockstepArena.Protocol.Wire {
             Detail = input.ReadString();
             break;
           }
+          case 40: {
+            WinnerPlayerId = input.ReadUInt64();
+            break;
+          }
+          case 48: {
+            Slot0RoundWins = input.ReadUInt32();
+            break;
+          }
+          case 56: {
+            Slot1RoundWins = input.ReadUInt32();
+            break;
+          }
         }
       }
     }
@@ -8582,7 +9029,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[29]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[30]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8817,7 +9264,7 @@ namespace LockstepArena.Protocol.Wire {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[30]; }
+      get { return global::LockstepArena.Protocol.Wire.LockstepArenaProtocolReflection.Descriptor.MessageTypes[31]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]

@@ -29,6 +29,7 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(ReadyAndUnreadyBroadcastAtomicRoomSnapshots), ReadyAndUnreadyBroadcastAtomicRoomSnapshots),
             new TestCase(nameof(OpenNonHostLeaveRemovesOnlyThatParticipant), OpenNonHostLeaveRemovesOnlyThatParticipant),
             new TestCase(nameof(OpenHostLossClosesRoomAndReturnsSurvivorsToLobby), OpenHostLossClosesRoomAndReturnsSurvivorsToLobby),
+            new TestCase(nameof(LanEndpointsUseConfiguredIpv4AddressAndValidateOptions), LanEndpointsUseConfiguredIpv4AddressAndValidateOptions),
         };
 
         private static void NicknameValidationUsesTrimControlUtf8AndOrdinalRules()
@@ -155,6 +156,30 @@ namespace LockstepArena.DemoFlow.Tests
 
             TestAssert.Throws<ArgumentOutOfRangeException>(() => new DemoServerOptions(0, 0, 2, 2, 2, SpawnStates(2), 2, 8, 0, 4, 1024, 2048, 32, 3, 8, 4, 64, 1024, 32, 3, 8));
             TestAssert.Throws<ArgumentOutOfRangeException>(() => new DemoServerOptions(0, 0, 4, 2, 4, SpawnStates(3), 2, 8, 8, 4, 1024, 2048, 32, 3, 8, 4, 64, 1024, 32, 3, 8));
+        }
+
+        private static void LanEndpointsUseConfiguredIpv4AddressAndValidateOptions()
+        {
+            DemoServerOptions serverOptions = CreateOptions(
+                bindAddress: "127.0.0.1",
+                battleDefinition: BattleDefinition.CreateDefault(),
+                battleReadyTimeout: TimeSpan.FromSeconds(15));
+            using var server = new TcpDemoServer(serverOptions);
+            TestAssert.Equal(IPAddress.Loopback, server.BindAddress);
+
+            using var client = new TcpDemoClient(new DemoClientOptions(
+                server.ControlPort, 1024, 2048, 32, 3, 8, 4, 64,
+                4, 4, 8, 16, 1024, 32, 3, 8,
+                "127.0.0.1", BattleDefinition.CreateDefault()));
+            client.BeginConnect();
+            PumpUntil(server, client, DemoClientPhase.AwaitingSessionEntry);
+
+            TestAssert.Throws<ArgumentException>(() => CreateOptions(bindAddress: "localhost"));
+            TestAssert.Throws<ArgumentOutOfRangeException>(() => CreateOptions(battleReadyTimeout: TimeSpan.FromTicks(-1)));
+            TestAssert.Throws<ArgumentException>(() => new DemoClientOptions(
+                1, 1024, 2048, 32, 3, 8, 4, 64,
+                4, 4, 8, 16, 1024, 32, 3, 8,
+                "localhost", BattleDefinition.CreateDefault()));
         }
 
         private static void RoomIdExhaustionRejectsWithoutRoomMutation()
@@ -313,9 +338,9 @@ namespace LockstepArena.DemoFlow.Tests
             return new TcpDemoServer(CreateOptions(maxSessions, maxRooms, maxRoomCapacity, maxPendingControlBytesPerSession, controlReceiveReadCapacity, maxControlSendBytesPerPump));
         }
 
-        internal static DemoServerOptions CreateOptions(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8, int maxControlSendBytesPerPump = 64)
+        internal static DemoServerOptions CreateOptions(int maxSessions = 4, int maxRooms = 4, int maxRoomCapacity = 4, int maxPendingControlBytesPerSession = 2048, int controlReceiveReadCapacity = 8, int maxControlSendBytesPerPump = 64, string bindAddress = "127.0.0.1", BattleDefinition? battleDefinition = null, TimeSpan? battleReadyTimeout = null, uint battleDurationTicks = 4)
         {
-            return new DemoServerOptions(0, 0, maxSessions, maxRooms, maxRoomCapacity, SpawnStates(maxRoomCapacity), 2, 8, 8, 4, 1024, maxPendingControlBytesPerSession, 128, 3, controlReceiveReadCapacity, 4, maxControlSendBytesPerPump, 1024, 32, 3, 8);
+            return new DemoServerOptions(0, 0, maxSessions, maxRooms, maxRoomCapacity, SpawnStates(maxRoomCapacity), 2, 8, 8, battleDurationTicks, 1024, maxPendingControlBytesPerSession, 128, 3, controlReceiveReadCapacity, 4, maxControlSendBytesPerPump, 1024, 32, 3, 8, bindAddress, battleDefinition, battleReadyTimeout);
         }
 
         internal static void FillControlCapacity(DemoSession session)

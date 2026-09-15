@@ -215,6 +215,9 @@ namespace LockstepArena.Protocol
                 BattleDurationTicks = battleDurationTicks,
                 InputDelayTicks = inputDelayTicks,
                 FinalStateTick = finalStateTick,
+                BattleConfigHash = initialState.IsGameplayEnabled
+                    ? BattleConfigHash.Compute(initialState.Definition!)
+                    : 0UL,
             };
             for (int index = 0; index < initialState.PlayerCount; index++)
             {
@@ -229,6 +232,43 @@ namespace LockstepArena.Protocol
             }
 
             return wire;
+        }
+
+        public static BattleState ToDomainGameplayBattleBootstrap(
+            BattleBootstrapMessage wire,
+            PlayerId localPlayerId,
+            PlayerSlot localPlayerSlot,
+            BattleDefinition definition)
+        {
+            if (wire is null) throw new ArgumentNullException(nameof(wire));
+            if (definition is null) throw new ArgumentNullException(nameof(definition));
+            ulong expectedHash = BattleConfigHash.Compute(definition);
+            if (wire.BattleConfigHash != expectedHash)
+            {
+                throw new ProtocolMappingException("Battle configuration hash does not match the local deterministic definition.");
+            }
+
+            BattleState transported = ToDomainBattleBootstrap(wire, localPlayerId, localPlayerSlot);
+            if (transported.Tick != 0)
+            {
+                throw new ProtocolMappingException("Gameplay battle bootstrap must begin at Tick zero.");
+            }
+
+            BattleState gameplay = BattleState.CreateGameplayInitial(transported.Roster, definition);
+            for (int index = 0; index < gameplay.PlayerCount; index++)
+            {
+                PlayerSlot slot = new PlayerSlot(index);
+                PlayerState expected = gameplay.GetPlayerState(slot);
+                PlayerState actual = transported.GetPlayerState(slot);
+                if (expected.PositionX != actual.PositionX ||
+                    expected.PositionZ != actual.PositionZ ||
+                    expected.Aim != actual.Aim)
+                {
+                    throw new ProtocolMappingException("Gameplay bootstrap initial state does not match the deterministic definition.");
+                }
+            }
+
+            return gameplay;
         }
 
         public static BattleState ToDomainBattleBootstrap(

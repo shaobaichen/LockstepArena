@@ -20,6 +20,8 @@ namespace LockstepArena.Demo.Editor.Tests
                 1UL, "Slot0/PlayerId2 | Slot1/PlayerId1", "NOT_HOST",
                 4U, 4U, 4U, 4U, 0, 0, 4, true, 4,
                 0xD8E54FF828A4C670UL, 0xD8E54FF828A4C670UL, true,
+                Enum.Parse(Type.GetType("LockstepArena.Protocol.Wire.BattleSettlementReasonMessage, LockstepArena.Protocol")!, "BattleSettlementReasonMatchCompleted"),
+                2UL, 2U, 1U, "Match completed.",
             });
             Type controllerType = Type.GetType("LockstepArena.Demo.LockstepArenaDemoController, LockstepArena.Demo")!;
             MethodInfo formatter = controllerType.GetMethod("FormatDiagnostics", BindingFlags.Public | BindingFlags.Static)!;
@@ -32,7 +34,15 @@ namespace LockstepArena.Demo.Editor.Tests
                 "ServerTick=4 NextPublishTick=4 " +
                 "AuthorityTick=4 PredictedTick=4 PendingPredictions=0 PendingAuthority=0 Replay=4 " +
                 "LatestDirty=True CumulativeDirty=4 AuthorityDigest=D8E54FF828A4C670 " +
-                "PredictedDigest=D8E54FF828A4C670 SettlementVerified=True"));
+                "PredictedDigest=D8E54FF828A4C670 SettlementVerified=True " +
+                "Settlement=BattleSettlementReasonMatchCompleted Winner=2 Score=2-1"));
+        }
+
+        [Test]
+        public void UnityLoadsGameplayRootAndPresenterTypes()
+        {
+            Assert.That(Type.GetType("LockstepArena.Demo.LockstepArenaDemoController, LockstepArena.Demo"), Is.Not.Null);
+            Assert.That(Type.GetType("LockstepArena.Demo.BattlePresenter, LockstepArena.Demo"), Is.Not.Null);
         }
     }
 }

@@ -605,7 +605,7 @@ namespace LockstepArena.Simulation
             return projectiles;
         }
 
-        internal static void GetAimDirection(ushort aim, out int x, out int z)
+        public static void GetAimDirection(ushort aim, out int x, out int z)
         {
             int directionIndex = (int)((((uint)aim + 512U) >> 10) & 63U);
             int quadrant = directionIndex >> 4;
@@ -621,7 +621,7 @@ namespace LockstepArena.Simulation
             }
         }
 
-        internal static ushort GetAimToward(ArenaPoint from, ArenaPoint to)
+        public static ushort GetAimToward(ArenaPoint from, ArenaPoint to)
         {
             long deltaX = (long)to.X - from.X;
             long deltaZ = (long)to.Z - from.Z;

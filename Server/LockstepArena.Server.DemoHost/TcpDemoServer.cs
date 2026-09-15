@@ -31,8 +31,8 @@ namespace LockstepArena.Server.DemoHost
         public TcpDemoServer(DemoServerOptions options)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
-            var controlListener = new TcpListener(IPAddress.Loopback, options.ControlPort);
-            var battleListener = new TcpListener(IPAddress.Loopback, options.BattlePort);
+            var controlListener = new TcpListener(options.BindAddress, options.ControlPort);
+            var battleListener = new TcpListener(options.BindAddress, options.BattlePort);
             try
             {
                 controlListener.Start();
@@ -49,10 +49,12 @@ namespace LockstepArena.Server.DemoHost
             _battleListener = battleListener;
             ControlPort = ((IPEndPoint)controlListener.LocalEndpoint).Port;
             BattlePort = ((IPEndPoint)battleListener.LocalEndpoint).Port;
+            BindAddress = options.BindAddress;
         }
 
         public int ControlPort { get; }
         public int BattlePort { get; }
+        public IPAddress BindAddress { get; }
         public int SessionCount => _sessions.Count;
         public int RoomCount => _rooms.Count;
 
@@ -96,6 +98,7 @@ namespace LockstepArena.Server.DemoHost
 
             DrainAllSessionEvents();
             ProgressBattleAttachments();
+            ProgressBattlePreparations();
             int published = PumpBattles(out int completed, out int aborted);
             DrainAllSessionEvents();
             return new DemoServerPumpResult(accepted, acceptedBattle, processed, published, completed, aborted);
@@ -265,15 +268,24 @@ namespace LockstepArena.Server.DemoHost
             if (_options.SpawnStateCount < participants.Length) throw new InvalidOperationException("Spawn configuration is incomplete.");
 
             var playerIds = new PlayerId[participants.Length];
-            var states = new PlayerState[participants.Length];
             for (int index = 0; index < participants.Length; index++)
             {
                 playerIds[index] = new PlayerId(participants[index].SessionId);
-                states[index] = _options.GetSpawnState(new PlayerSlot(index));
             }
 
             var roster = new ActiveRoster(playerIds);
-            BattleState initialState = BattleState.CreateInitial(roster, states);
+            BattleState initialState;
+            if (_options.BattleDefinition is not null)
+            {
+                initialState = BattleState.CreateGameplayInitial(roster, _options.BattleDefinition);
+            }
+            else
+            {
+                var states = new PlayerState[participants.Length];
+                for (int index = 0; index < participants.Length; index++)
+                    states[index] = _options.GetSpawnState(new PlayerSlot(index));
+                initialState = BattleState.CreateInitial(roster, states);
+            }
             uint finalStateTick = checked(initialState.Tick + _options.BattleDurationTicks);
             BattleBootstrapMessage bootstrap = ProtocolMapper.ToWireBattleBootstrap(battleId, initialState, _options.BattleDurationTicks, _options.InputDelayTicks, finalStateTick);
             var tickets = new byte[participants.Length][];
@@ -294,7 +306,7 @@ namespace LockstepArena.Server.DemoHost
                 };
             }
 
-            var preparation = new BattlePreparation(battleId, initialState, finalStateTick, participants, tickets, events);
+            var preparation = new BattlePreparation(battleId, initialState, finalStateTick, participants, tickets, events, _options.BattleReadyTimeout);
             var outbound = new ControlEventBatch(this);
             for (int index = 0; index < participants.Length; index++)
             {
@@ -304,6 +316,7 @@ namespace LockstepArena.Server.DemoHost
             for (int index = 0; index < participants.Length; index++)
             {
                 participants[index].Phase = DemoSessionPhase.PreparingBattle;
+                participants[index].IsBattleReady = false;
             }
 
             room.Preparation = preparation;
@@ -319,6 +332,29 @@ namespace LockstepArena.Server.DemoHost
             throw new InvalidOperationException("Room was not found.");
         }
 
+        internal void MarkBattleReady(ulong sessionId, ulong battleId, ulong battleConfigHash)
+        {
+            ThrowIfDisposed();
+            DemoSession session = GetSession(sessionId);
+            RequirePhase(session, DemoSessionPhase.PreparingBattle);
+            DemoRoom room = GetRoom(session.RoomId);
+            BattlePreparation preparation = room.Preparation ?? throw new InvalidOperationException("Battle preparation is missing.");
+            if (preparation.BattleId != battleId) throw new InvalidOperationException("BattleReady does not match the prepared battle.");
+            if (!preparation.InitialState.IsGameplayEnabled) throw new InvalidOperationException("BattleReady is not used by this battle.");
+            ulong expectedHash = BattleConfigHash.Compute(preparation.InitialState.Definition!);
+            if (battleConfigHash != expectedHash)
+            {
+                AbortPreparationToLobby(room, "Battle configuration mismatch.", null);
+                return;
+            }
+
+            var slot = new PlayerSlot(session.JoinOrdinal);
+            if (!ReferenceEquals(preparation.GetParticipant(slot), session) || !preparation.IsAttached(slot))
+                throw new InvalidOperationException("Battle connection must attach before BattleReady.");
+            session.IsBattleReady = true;
+            TryActivatePreparation(room);
+        }
+
         internal DemoSession GetSession(ulong sessionId)
         {
             for (int index = 0; index < _sessions.Count; index++) if (_sessions[index].SessionId == sessionId) return _sessions[index];
@@ -329,9 +365,18 @@ namespace LockstepArena.Server.DemoHost
         {
             ThrowIfDisposed();
             DemoSession session = GetSession(sessionId);
-            if (session.Phase == DemoSessionPhase.PreparingBattle || session.Phase == DemoSessionPhase.InBattle)
+            if (session.Phase == DemoSessionPhase.PreparingBattle)
             {
-                AbortRoom(GetRoom(session.RoomId), "A participant control connection ended.", session);
+                AbortPreparationToLobby(GetRoom(session.RoomId), "A participant disconnected during battle preparation.", session);
+            }
+            else if (session.Phase == DemoSessionPhase.InBattle)
+            {
+                DemoRoom room = GetRoom(session.RoomId);
+                if (room.Preparation?.InitialState.IsGameplayEnabled == true)
+                    CompleteForfeit(room, new PlayerSlot(session.JoinOrdinal),
+                        "A participant control connection ended.", session);
+                else
+                    AbortRoom(room, "A participant control connection ended.", session);
             }
             else if (session.Phase == DemoSessionPhase.Settlement)
             {
@@ -423,27 +468,7 @@ namespace LockstepArena.Server.DemoHost
                     _battleAttachments.Remove(attachment);
                     BattlePreparation preparation = attachment.Preparation!;
                     preparation.CommitAttachment(attachment.Slot, attachment.DetachClient());
-                    if (preparation.AttachedCount == preparation.ParticipantCount)
-                    {
-                        DemoRoom room = GetRoomForPreparation(preparation);
-                        DemoSession[] participants = room.CopyParticipants();
-                        var events = new ControlEventBatch(this);
-                        for (int participantIndex = 0; participantIndex < participants.Length; participantIndex++)
-                        {
-                            events.Add(participants[participantIndex], new ServerControlEventMessage
-                            {
-                                BattleStarted = new BattleStartedEventMessage { BattleId = preparation.BattleId },
-                            });
-                        }
-                        events.Preflight();
-                        preparation.Activate(_options);
-                        room.Lifecycle = DemoRoomLifecycle.InBattle;
-                        for (int participantIndex = 0; participantIndex < participants.Length; participantIndex++)
-                        {
-                            participants[participantIndex].Phase = DemoSessionPhase.InBattle;
-                        }
-                        events.Commit();
-                    }
+                    TryActivatePreparation(GetRoomForPreparation(preparation));
                 }
                 catch
                 {
@@ -452,6 +477,61 @@ namespace LockstepArena.Server.DemoHost
                     _battleAttachments.Remove(attachment);
                 }
             }
+        }
+
+        private void ProgressBattlePreparations()
+        {
+            DemoRoom[] rooms = _rooms.ToArray();
+            for (int index = 0; index < rooms.Length; index++)
+            {
+                DemoRoom room = rooms[index];
+                BattlePreparation? preparation = room.Preparation;
+                if (room.Lifecycle == DemoRoomLifecycle.PreparingBattle &&
+                    preparation is not null && preparation.ReadyTimedOut)
+                    AbortPreparationToLobby(room, "BattleReady timed out.", null);
+            }
+        }
+
+        private void TryActivatePreparation(DemoRoom room)
+        {
+            BattlePreparation preparation = room.Preparation ?? throw new InvalidOperationException("Battle preparation is missing.");
+            if (!preparation.AllParticipantsReady || preparation.SharedSession is not null) return;
+            DemoSession[] participants = room.CopyParticipants();
+            var events = new ControlEventBatch(this);
+            for (int index = 0; index < participants.Length; index++)
+                events.Add(participants[index], new ServerControlEventMessage
+                {
+                    BattleStarted = new BattleStartedEventMessage { BattleId = preparation.BattleId },
+                });
+            events.Preflight();
+            preparation.Activate(_options);
+            room.Lifecycle = DemoRoomLifecycle.InBattle;
+            for (int index = 0; index < participants.Length; index++)
+                participants[index].Phase = DemoSessionPhase.InBattle;
+            events.Commit();
+        }
+
+        private void AbortPreparationToLobby(DemoRoom room, string detail, DemoSession? disconnected)
+        {
+            BattlePreparation? preparation = room.Preparation;
+            DemoSession[] participants = room.CopyParticipants();
+            preparation?.Invalidate();
+            for (int index = _battleAttachments.Count - 1; index >= 0; index--)
+            {
+                if (!ReferenceEquals(_battleAttachments[index].Preparation, preparation)) continue;
+                _battleAttachments[index].Dispose();
+                _battleAttachments.RemoveAt(index);
+            }
+            room.Lifecycle = DemoRoomLifecycle.Removed;
+            _rooms.Remove(room);
+            for (int index = 0; index < participants.Length; index++)
+            {
+                DemoSession participant = participants[index];
+                if (participant.Phase == DemoSessionPhase.Closed || ReferenceEquals(participant, disconnected)) continue;
+                MoveToLobbyState(participant);
+                TryNotifyAfterCleanup(participant, CreateLobbyEntered());
+            }
+            _ = detail;
         }
 
         private int PumpBattles(out int completed, out int aborted)
@@ -466,8 +546,24 @@ namespace LockstepArena.Server.DemoHost
                 if (room.Lifecycle != DemoRoomLifecycle.InBattle || room.Preparation?.SharedSession is null) continue;
                 try
                 {
-                    published = checked(published + room.Preparation.SharedSession.PumpOnce());
                     BattlePreparation preparation = room.Preparation;
+                    if (preparation.TryGetDisconnectedSlot(out PlayerSlot disconnectedSlot))
+                    {
+                        if (preparation.InitialState.IsGameplayEnabled)
+                        {
+                            CompleteForfeit(room, disconnectedSlot,
+                                "A participant battle connection ended.", null);
+                            completed++;
+                        }
+                        else
+                        {
+                            AbortRoom(room, "Battle session failed.");
+                            aborted++;
+                        }
+                        continue;
+                    }
+
+                    published = checked(published + preparation.SharedSession.PumpOnce());
                     uint stateTick = preparation.SharedSession.ServerState.Tick;
                     uint nextPublishTick = preparation.SharedSession.NextPublishTick;
                     if (stateTick > preparation.FinalStateTick)
@@ -479,9 +575,19 @@ namespace LockstepArena.Server.DemoHost
                         QueueBattleStatus(room, preparation.BattleId, stateTick, nextPublishTick);
                         preparation.CommitReportedStatus(stateTick, nextPublishTick);
                     }
-                    if (stateTick == preparation.FinalStateTick)
+                    if (preparation.SharedSession.ServerState.IsGameplayEnabled &&
+                        preparation.SharedSession.ServerState.Phase == BattlePhase.MatchEnded)
                     {
-                        CompleteBattle(room, preparation.SharedSession.ServerState);
+                        CompleteBattle(room, preparation.SharedSession.ServerState,
+                            BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted,
+                            "Match completed.");
+                        completed++;
+                    }
+                    else if (stateTick == preparation.FinalStateTick)
+                    {
+                        CompleteBattle(room, preparation.SharedSession.ServerState,
+                            BattleSettlementReasonMessage.BattleSettlementReasonTickLimitReached,
+                            "Battle safety Tick limit reached.");
                         completed++;
                     }
                 }
@@ -514,7 +620,13 @@ namespace LockstepArena.Server.DemoHost
             events.Commit();
         }
 
-        private void CompleteBattle(DemoRoom room, BattleState state)
+        private void CompleteBattle(
+            DemoRoom room,
+            BattleState state,
+            BattleSettlementReasonMessage reason,
+            string detail,
+            PlayerSlot? forcedWinnerSlot = null,
+            DemoSession? disconnected = null)
         {
             BattlePreparation preparation = room.Preparation ?? throw new InvalidOperationException("Battle preparation is missing.");
             var finalState = new FinalBattleStateMessage
@@ -536,28 +648,61 @@ namespace LockstepArena.Server.DemoHost
                 });
             }
 
+            PlayerSlot? winnerSlot = forcedWinnerSlot ?? state.MatchWinnerSlot;
+            ulong winnerPlayerId = winnerSlot.HasValue
+                ? state.Roster.GetPlayerId(winnerSlot.Value).Value
+                : 0UL;
+            uint slot0RoundWins = state.PlayerCount > 0
+                ? checked((uint)state.GetPlayerState(new PlayerSlot(0)).RoundWins)
+                : 0U;
+            uint slot1RoundWins = state.PlayerCount > 1
+                ? checked((uint)state.GetPlayerState(new PlayerSlot(1)).RoundWins)
+                : 0U;
+
             DemoSession[] participants = room.CopyParticipants();
             var events = new ControlEventBatch(this);
             for (int index = 0; index < participants.Length; index++)
             {
+                if (ReferenceEquals(participants[index], disconnected)) continue;
                 events.Add(participants[index], new ServerControlEventMessage
                 {
                     BattleSettlement = new BattleSettlementEventMessage
                     {
                         BattleId = preparation.BattleId,
-                        Reason = BattleSettlementReasonMessage.BattleSettlementReasonTickLimitReached,
+                        Reason = reason,
                         FinalState = finalState.Clone(),
+                        Detail = detail,
+                        WinnerPlayerId = winnerPlayerId,
+                        Slot0RoundWins = slot0RoundWins,
+                        Slot1RoundWins = slot1RoundWins,
                     },
                 });
             }
             events.Preflight();
             room.Lifecycle = DemoRoomLifecycle.Settled;
-            preparation.Invalidate();
             for (int index = 0; index < participants.Length; index++)
             {
                 participants[index].Phase = DemoSessionPhase.Settlement;
             }
             events.Commit();
+        }
+
+        private void CompleteForfeit(
+            DemoRoom room,
+            PlayerSlot disconnectedSlot,
+            string detail,
+            DemoSession? disconnected)
+        {
+            BattlePreparation preparation = room.Preparation ??
+                throw new InvalidOperationException("Battle preparation is missing.");
+            if (preparation.SharedSession is null)
+                throw new InvalidOperationException("Battle session is not active.");
+            if (disconnectedSlot.Value >= preparation.InitialState.PlayerCount)
+                throw new ArgumentOutOfRangeException(nameof(disconnectedSlot));
+            var winnerSlot = new PlayerSlot(disconnectedSlot.Value == 0 ? 1 : 0);
+            CompleteBattle(room, preparation.SharedSession.ServerState,
+                BattleSettlementReasonMessage.BattleSettlementReasonDisconnectForfeit,
+                detail, winnerSlot, disconnected);
         }
 
         private bool TryReserveTicket(byte[] ticket, out BattlePreparation? preparation, out PlayerSlot slot)
@@ -657,6 +802,10 @@ namespace LockstepArena.Server.DemoHost
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.ExitSession:
                         CloseControl(connection);
+                        break;
+                    case ClientControlCommandMessage.CommandOneofCase.BattleReady:
+                        DemoSession battleReady = RequireNamed(connection);
+                        MarkBattleReady(battleReady.SessionId, command.BattleReady.BattleId, command.BattleReady.BattleConfigHash);
                         break;
                     default:
                         throw new InvalidDataException("Unknown control command.");
@@ -824,6 +973,7 @@ namespace LockstepArena.Server.DemoHost
             room.RemoveAt(index);
             if (room.ParticipantCount == 0)
             {
+                room.Preparation?.Invalidate();
                 room.Lifecycle = DemoRoomLifecycle.Removed;
                 _rooms.Remove(room);
             }
@@ -834,6 +984,7 @@ namespace LockstepArena.Server.DemoHost
             session.RoomId = 0;
             session.JoinOrdinal = 0;
             session.IsReady = false;
+            session.IsBattleReady = false;
             session.Phase = DemoSessionPhase.Lobby;
         }
 

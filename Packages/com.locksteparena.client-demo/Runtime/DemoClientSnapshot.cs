@@ -1,3 +1,5 @@
+using LockstepArena.Protocol.Wire;
+
 namespace LockstepArena.Client.Demo
 {
     public sealed class DemoClientSnapshot
@@ -24,7 +26,12 @@ namespace LockstepArena.Client.Demo
             int cumulativeDirtyFrameCount,
             ulong authoritativeDigest,
             ulong predictedDigest,
-            bool settlementVerified)
+            bool settlementVerified,
+            BattleSettlementReasonMessage settlementReason,
+            ulong winnerPlayerId,
+            uint slot0RoundWins,
+            uint slot1RoundWins,
+            string settlementDetail)
         {
             Phase = phase;
             SessionId = sessionId;
@@ -48,6 +55,11 @@ namespace LockstepArena.Client.Demo
             AuthoritativeDigest = authoritativeDigest;
             PredictedDigest = predictedDigest;
             SettlementVerified = settlementVerified;
+            SettlementReason = settlementReason;
+            WinnerPlayerId = winnerPlayerId;
+            Slot0RoundWins = slot0RoundWins;
+            Slot1RoundWins = slot1RoundWins;
+            SettlementDetail = settlementDetail;
         }
 
         public DemoClientPhase Phase { get; }
@@ -72,5 +84,10 @@ namespace LockstepArena.Client.Demo
         public ulong AuthoritativeDigest { get; }
         public ulong PredictedDigest { get; }
         public bool SettlementVerified { get; }
+        public BattleSettlementReasonMessage SettlementReason { get; }
+        public ulong WinnerPlayerId { get; }
+        public uint Slot0RoundWins { get; }
+        public uint Slot1RoundWins { get; }
+        public string SettlementDetail { get; }
     }
 }

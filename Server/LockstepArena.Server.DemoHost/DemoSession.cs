@@ -38,6 +38,7 @@ namespace LockstepArena.Server.DemoHost
         internal ulong RoomId { get; set; }
         internal int JoinOrdinal { get; set; }
         internal bool IsReady { get; set; }
+        internal bool IsBattleReady { get; set; }
         internal int EventCount => _events.Count;
         internal int PendingControlBytes => _pendingControlBytes;
         internal ServerControlEventMessage LastEvent => _events.Count == 0

@@ -14,6 +14,7 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(ControlEventOneOfRoundTripsEveryApprovedVariant), ControlEventOneOfRoundTripsEveryApprovedVariant),
             new TestCase(nameof(ExistingBattleMessagesRemainWireCompatible), ExistingBattleMessagesRemainWireCompatible),
             new TestCase(nameof(BattleBootstrapRoundTripPreservesCanonicalState), BattleBootstrapRoundTripPreservesCanonicalState),
+            new TestCase(nameof(GameplayBootstrapCarriesConfigHashAndRejectsMismatch), GameplayBootstrapCarriesConfigHashAndRejectsMismatch),
             new TestCase(nameof(BattleBootstrapRejectsMissingRosterOrState), BattleBootstrapRejectsMissingRosterOrState),
             new TestCase(nameof(BattleBootstrapRejectsDuplicateMissingUnknownOrNoncontiguousSlot), BattleBootstrapRejectsDuplicateMissingUnknownOrNoncontiguousSlot),
             new TestCase(nameof(BattleBootstrapRejectsOutOfRangePositionOrAim), BattleBootstrapRejectsOutOfRangePositionOrAim),
@@ -33,6 +34,7 @@ namespace LockstepArena.DemoFlow.Tests
                 new ClientControlCommandMessage { StartBattle = new StartBattleCommandMessage() },
                 new ClientControlCommandMessage { ReturnToLobby = new ReturnToLobbyCommandMessage() },
                 new ClientControlCommandMessage { ExitSession = new ExitSessionCommandMessage() },
+                new ClientControlCommandMessage { BattleReady = new BattleReadyCommandMessage { BattleId = 4, BattleConfigHash = 5 } },
             };
 
             for (int index = 0; index < values.Length; index++)
@@ -54,6 +56,8 @@ namespace LockstepArena.DemoFlow.Tests
                 new ServerControlEventMessage { BattleStarted = new BattleStartedEventMessage { BattleId = 1 } },
                 new ServerControlEventMessage { BattleStatus = new BattleStatusEventMessage { BattleId = 1, ServerStateTick = 1, NextPublishTick = 1 } },
                 new ServerControlEventMessage { BattleSettlement = new BattleSettlementEventMessage { BattleId = 1, Reason = BattleSettlementReasonMessage.BattleSettlementReasonTickLimitReached } },
+                new ServerControlEventMessage { BattleSettlement = new BattleSettlementEventMessage { BattleId = 2, Reason = BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted, WinnerPlayerId = 11, Slot0RoundWins = 2, Slot1RoundWins = 1 } },
+                new ServerControlEventMessage { BattleSettlement = new BattleSettlementEventMessage { BattleId = 3, Reason = BattleSettlementReasonMessage.BattleSettlementReasonDisconnectForfeit, WinnerPlayerId = 22 } },
                 new ServerControlEventMessage { CommandRejected = new CommandRejectedEventMessage { Reason = ControlRejectReasonMessage.ControlRejectReasonNotHost } },
                 new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() },
             };
@@ -89,6 +93,28 @@ namespace LockstepArena.DemoFlow.Tests
                 new PlayerSlot(0));
 
             AssertStateEqual(state, mapped);
+        }
+
+        private static void GameplayBootstrapCarriesConfigHashAndRejectsMismatch()
+        {
+            var roster = new ActiveRoster(new[] { new PlayerId(20), new PlayerId(10) });
+            BattleDefinition definition = BattleDefinition.CreateDefault();
+            BattleState state = BattleState.CreateGameplayInitial(roster, definition);
+            BattleBootstrapMessage wire = ProtocolMapper.ToWireBattleBootstrap(4, state, 20_000, 2, 20_000);
+
+            TestAssert.Equal(BattleConfigHash.Compute(definition), wire.BattleConfigHash);
+            BattleState mapped = ProtocolMapper.ToDomainGameplayBattleBootstrap(
+                BattleBootstrapMessage.Parser.ParseFrom(wire.ToByteArray()),
+                new PlayerId(20),
+                new PlayerSlot(0),
+                definition);
+            TestAssert.True(BattleStateValueComparer.HaveSameValue(state, mapped));
+
+            BattleDefinition mismatched = new BattleDefinition(
+                new GameplayConfig(101, 25, 100, 6, 300, 45, 100, 20, 70, 5, 1_800, 90, 30, 2),
+                definition.Arena);
+            TestAssert.Throws<ProtocolMappingException>(() =>
+                ProtocolMapper.ToDomainGameplayBattleBootstrap(wire, new PlayerId(20), new PlayerSlot(0), mismatched));
         }
 
         private static void BattleBootstrapRejectsMissingRosterOrState()

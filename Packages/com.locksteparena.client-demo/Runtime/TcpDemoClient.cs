@@ -37,11 +37,14 @@ namespace LockstepArena.Client.Demo
         private string _lastRejection = string.Empty;
         private BattlePreparingEventMessage? _preparing;
         private BattleState? _battleInitialState;
+        private BattleState? _lastBattleState;
         private TcpClient? _battleClient;
         private NetworkStream? _battleStream;
         private int _ticketSendOffset;
         private bool _battleAccepted;
         private bool _battleStarted;
+        private bool _localBattleSceneReady;
+        private bool _battleReadySent;
         private bool _battleAttachmentInitiatedThisPump;
         private PredictedTcpClientBattleRuntime? _battleRuntime;
         private uint _finalInputTick;
@@ -59,6 +62,11 @@ namespace LockstepArena.Client.Demo
         private ulong _predictedDigest;
         private BattleSettlementEventMessage? _pendingSettlement;
         private bool _settlementVerified;
+        private BattleSettlementReasonMessage _settlementReason;
+        private ulong _winnerPlayerId;
+        private uint _slot0RoundWins;
+        private uint _slot1RoundWins;
+        private string _settlementDetail = string.Empty;
         private bool _exitRequested;
         private bool _disposed;
 
@@ -71,6 +79,11 @@ namespace LockstepArena.Client.Demo
         }
 
         public DemoClientPhase Phase => _phase;
+        public BattleState? PredictedBattleState => _battleRuntime?.PredictedState ?? _lastBattleState ?? _battleInitialState;
+        public BattleState? AuthoritativeBattleState => _battleRuntime?.AuthoritativeState ?? _lastBattleState ?? _battleInitialState;
+        public PlayerSlot? LocalPlayerSlot => _preparing is null
+            ? (PlayerSlot?)null
+            : new PlayerSlot(checked((int)_preparing.LocalPlayerSlot));
         public DemoClientSnapshot Snapshot
         {
             get
@@ -98,7 +111,12 @@ namespace LockstepArena.Client.Demo
                     _cumulativeDirtyFrameCount,
                     _authoritativeDigest,
                     _predictedDigest,
-                    _settlementVerified);
+                    _settlementVerified,
+                    _settlementReason,
+                    _winnerPlayerId,
+                    _slot0RoundWins,
+                    _slot1RoundWins,
+                    _settlementDetail);
             }
         }
 
@@ -108,7 +126,7 @@ namespace LockstepArena.Client.Demo
             _phase = DemoClientPhase.ConnectingControl;
             try
             {
-                _client = BeginLoopbackConnect(_options.ControlPort);
+                _client = BeginConnect(_options.ServerAddress, _options.ControlPort);
             }
             catch
             {
@@ -158,6 +176,15 @@ namespace LockstepArena.Client.Demo
         {
             RequirePhase(DemoClientPhase.Room);
             Queue(new ClientControlCommandMessage { StartBattle = new StartBattleCommandMessage() });
+        }
+
+        public void MarkBattleSceneReady()
+        {
+            RequirePhase(DemoClientPhase.PreparingBattle);
+            if (_options.BattleDefinition is null)
+                throw new InvalidOperationException("BattleReady is only used by gameplay battles.");
+            _localBattleSceneReady = true;
+            TryQueueBattleReady();
         }
 
         public void ReturnToLobby()
@@ -367,15 +394,41 @@ namespace LockstepArena.Client.Demo
             if (preparing.LocalPlayerSlot > int.MaxValue) throw new InvalidDataException("Local player slot exceeds the Domain range.");
             var localId = new PlayerId(preparing.LocalPlayerId);
             var localSlot = new PlayerSlot(checked((int)preparing.LocalPlayerSlot));
-            BattleState initialState = ProtocolMapper.ToDomainBattleBootstrap(preparing.Bootstrap, localId, localSlot);
+            BattleState initialState;
+            if (_options.BattleDefinition is null)
+            {
+                initialState = ProtocolMapper.ToDomainBattleBootstrap(preparing.Bootstrap, localId, localSlot);
+            }
+            else
+            {
+                ulong localHash = BattleConfigHash.Compute(_options.BattleDefinition);
+                if (preparing.Bootstrap.BattleConfigHash != localHash)
+                {
+                    _preparing = preparing.Clone();
+                    _battleId = preparing.BattleId;
+                    Queue(new ClientControlCommandMessage
+                    {
+                        BattleReady = new BattleReadyCommandMessage
+                        {
+                            BattleId = preparing.BattleId,
+                            BattleConfigHash = localHash,
+                        },
+                    });
+                    _battleReadySent = true;
+                    return;
+                }
+                initialState = ProtocolMapper.ToDomainGameplayBattleBootstrap(
+                    preparing.Bootstrap, localId, localSlot, _options.BattleDefinition);
+            }
             uint finalStateTick = preparing.Bootstrap.FinalStateTick;
             if (finalStateTick == 0U) throw new InvalidDataException("Final battle Tick must be positive.");
-            TcpClient battleClient = BeginLoopbackConnect(checked((int)preparing.BattlePort));
+            TcpClient battleClient = BeginConnect(_options.ServerAddress, checked((int)preparing.BattlePort));
             _battleClient = battleClient;
             _battleStream = null;
             _battleAttachmentInitiatedThisPump = true;
             _preparing = preparing.Clone();
             _battleInitialState = initialState;
+            _lastBattleState = initialState;
             _battleRoster = FormatBattleRoster(initialState.Roster);
             _battleId = preparing.BattleId;
             _finalStateTick = finalStateTick;
@@ -393,6 +446,8 @@ namespace LockstepArena.Client.Demo
             _ticketSendOffset = 0;
             _battleAccepted = false;
             _battleStarted = false;
+            _localBattleSceneReady = false;
+            _battleReadySent = false;
         }
 
         private void ProgressBattleAttachment()
@@ -418,11 +473,27 @@ namespace LockstepArena.Client.Demo
                 int value = _battleStream.ReadByte();
                 if (value != 0x01) throw new InvalidDataException("Battle attachment acceptance byte is invalid.");
                 _battleAccepted = true;
+                TryQueueBattleReady();
                 TryActivateBattleRuntime();
             }
         }
 
-        private static TcpClient BeginLoopbackConnect(int port)
+        private void TryQueueBattleReady()
+        {
+            if (!_battleAccepted || !_localBattleSceneReady || _battleReadySent ||
+                _preparing is null || _options.BattleDefinition is null) return;
+            Queue(new ClientControlCommandMessage
+            {
+                BattleReady = new BattleReadyCommandMessage
+                {
+                    BattleId = _preparing.BattleId,
+                    BattleConfigHash = BattleConfigHash.Compute(_options.BattleDefinition),
+                },
+            });
+            _battleReadySent = true;
+        }
+
+        private static TcpClient BeginConnect(IPAddress address, int port)
         {
             var client = new TcpClient(AddressFamily.InterNetwork);
             try
@@ -430,7 +501,7 @@ namespace LockstepArena.Client.Demo
                 client.Client.Blocking = false;
                 try
                 {
-                    client.Connect(IPAddress.Loopback, port);
+                    client.Connect(address, port);
                 }
                 catch (SocketException exception) when (IsConnectInProgress(exception.SocketErrorCode))
                 {
@@ -492,6 +563,11 @@ namespace LockstepArena.Client.Demo
         private void ReceiveSettlement(BattleSettlementEventMessage settlement)
         {
             if (settlement.BattleId != _battleId) throw new InvalidDataException("Settlement does not match the active battle.");
+            _settlementReason = settlement.Reason;
+            _winnerPlayerId = settlement.WinnerPlayerId;
+            _slot0RoundWins = settlement.Slot0RoundWins;
+            _slot1RoundWins = settlement.Slot1RoundWins;
+            _settlementDetail = settlement.Detail;
             if (settlement.Reason == BattleSettlementReasonMessage.BattleSettlementReasonAborted)
             {
                 if (settlement.FinalState is not null) throw new InvalidDataException("Aborted settlement cannot claim a final state.");
@@ -502,15 +578,25 @@ namespace LockstepArena.Client.Demo
                 return;
             }
 
-            if (settlement.Reason != BattleSettlementReasonMessage.BattleSettlementReasonTickLimitReached ||
-                settlement.FinalState is null)
+            bool tickLimit = settlement.Reason == BattleSettlementReasonMessage.BattleSettlementReasonTickLimitReached;
+            bool matchCompleted = settlement.Reason == BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted;
+            bool forfeit = settlement.Reason == BattleSettlementReasonMessage.BattleSettlementReasonDisconnectForfeit;
+            if ((!tickLimit && !matchCompleted && !forfeit) || settlement.FinalState is null)
             {
                 throw new InvalidDataException("Normal settlement is incomplete.");
             }
 
-            if (settlement.FinalState.Tick != _finalStateTick)
+            if (tickLimit && settlement.FinalState.Tick != _finalStateTick)
             {
                 throw new InvalidDataException("Settlement Tick does not match the battle limit.");
+            }
+
+            if (!tickLimit)
+            {
+                if (settlement.FinalState.Tick > _finalStateTick)
+                    throw new InvalidDataException("Settlement Tick exceeds the battle safety limit.");
+                _finalStateTick = settlement.FinalState.Tick;
+                _finalInputTick = _finalStateTick == 0U ? 0U : _finalStateTick - 1U;
             }
 
             PredictedTcpClientBattleRuntime runtime = _battleRuntime ?? throw new InvalidDataException("Battle runtime is unavailable for settlement.");
@@ -546,16 +632,22 @@ namespace LockstepArena.Client.Demo
             FinalBattleStateMessage wire = settlement.FinalState ?? throw new InvalidDataException("Settlement final state is missing.");
             BattleState authority = runtime.AuthoritativeState;
             BattleState predicted = runtime.PredictedState;
+            bool forfeit = settlement.Reason ==
+                BattleSettlementReasonMessage.BattleSettlementReasonDisconnectForfeit;
+            bool matchCompleted = settlement.Reason ==
+                BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted;
+            bool converged = matchCompleted
+                ? predicted.Tick >= _finalStateTick && GameplayTerminalValuesMatch(authority, predicted)
+                : predicted.Tick == _finalStateTick &&
+                    BattleStateValueComparer.HaveSameValue(authority, predicted);
             if (authority.Tick != _finalStateTick ||
-                predicted.Tick != _finalStateTick ||
-                runtime.PendingAuthoritativeFrameCount != 0 ||
-                !StatesHaveSameValue(authority, predicted))
+                (!forfeit && (runtime.PendingAuthoritativeFrameCount != 0 || !converged)))
             {
                 throw new InvalidDataException("Client battle state has not converged at settlement.");
             }
 
             BattleState replay = runtime.ReconstructAuthoritativeState();
-            if (!StatesHaveSameValue(authority, replay) || wire.PlayerStates.Count != authority.PlayerCount)
+            if (!BattleStateValueComparer.HaveSameValue(authority, replay) || wire.PlayerStates.Count != authority.PlayerCount)
             {
                 throw new InvalidDataException("Settlement Replay or player count does not match authority.");
             }
@@ -582,10 +674,30 @@ namespace LockstepArena.Client.Demo
                 throw new InvalidDataException("Settlement digest does not match authority.");
             }
 
+            if (authority.IsGameplayEnabled)
+            {
+                uint slot0Wins = checked((uint)authority.GetPlayerState(new PlayerSlot(0)).RoundWins);
+                uint slot1Wins = checked((uint)authority.GetPlayerState(new PlayerSlot(1)).RoundWins);
+                if (settlement.Slot0RoundWins != slot0Wins || settlement.Slot1RoundWins != slot1Wins)
+                    throw new InvalidDataException("Settlement round score does not match authority.");
+                if (settlement.Reason == BattleSettlementReasonMessage.BattleSettlementReasonMatchCompleted)
+                {
+                    if (authority.Phase != BattlePhase.MatchEnded || !authority.MatchWinnerSlot.HasValue ||
+                        settlement.WinnerPlayerId != authority.Roster.GetPlayerId(authority.MatchWinnerSlot.Value).Value)
+                        throw new InvalidDataException("Completed-match winner does not match authority.");
+                }
+                else if (forfeit && !ContainsPlayerId(authority, settlement.WinnerPlayerId))
+                {
+                    throw new InvalidDataException("Forfeit winner is not in the battle roster.");
+                }
+            }
+
+            BattleState retainedState = forfeit ? authority : predicted;
             RefreshBattleDiagnostics();
             _pendingSettlement = null;
             _settlementVerified = true;
             DisposeBattleRuntime();
+            _lastBattleState = retainedState;
             _phase = DemoClientPhase.Settlement;
         }
 
@@ -599,6 +711,7 @@ namespace LockstepArena.Client.Demo
             _replayFrameCount = _battleRuntime.ReplayFrameCount;
             _authoritativeDigest = StateDigest.Compute(_battleRuntime.AuthoritativeState);
             _predictedDigest = StateDigest.Compute(_battleRuntime.PredictedState);
+            _lastBattleState = _battleRuntime.PredictedState;
         }
 
         private void DisposeBattleRuntime()
@@ -628,8 +741,16 @@ namespace LockstepArena.Client.Demo
             _battleRoster = string.Empty;
             _preparing = null;
             _battleInitialState = null;
+            _lastBattleState = null;
             _pendingSettlement = null;
             _settlementVerified = false;
+            _settlementReason = BattleSettlementReasonMessage.BattleSettlementReasonUnspecified;
+            _winnerPlayerId = 0;
+            _slot0RoundWins = 0;
+            _slot1RoundWins = 0;
+            _settlementDetail = string.Empty;
+            _localBattleSceneReady = false;
+            _battleReadySent = false;
         }
 
         private void CompleteExit()
@@ -645,20 +766,31 @@ namespace LockstepArena.Client.Demo
             _phase = DemoClientPhase.Disconnected;
         }
 
-        private static bool StatesHaveSameValue(BattleState left, BattleState right)
+        private static bool ContainsPlayerId(BattleState state, ulong playerId)
         {
-            if (left.Tick != right.Tick ||
-                left.PlayerCount != right.PlayerCount ||
-                !left.Roster.HasSameStructure(right.Roster)) return false;
-            for (int index = 0; index < left.PlayerCount; index++)
-            {
-                var slot = new PlayerSlot(index);
-                PlayerState leftPlayer = left.GetPlayerState(slot);
-                PlayerState rightPlayer = right.GetPlayerState(slot);
-                if (leftPlayer.PositionX != rightPlayer.PositionX ||
-                    leftPlayer.PositionZ != rightPlayer.PositionZ ||
-                    leftPlayer.Aim != rightPlayer.Aim) return false;
-            }
+            for (int index = 0; index < state.PlayerCount; index++)
+                if (state.Roster.GetPlayerId(new PlayerSlot(index)).Value == playerId) return true;
+            return false;
+        }
+
+        private static bool GameplayTerminalValuesMatch(BattleState authority, BattleState predicted)
+        {
+            if (!authority.IsGameplayEnabled || !predicted.IsGameplayEnabled ||
+                authority.Phase != BattlePhase.MatchEnded || predicted.Phase != BattlePhase.MatchEnded ||
+                !authority.Roster.HasSameStructure(predicted.Roster) ||
+                authority.MatchWinnerSlot != predicted.MatchWinnerSlot ||
+                authority.RoundResult != predicted.RoundResult ||
+                authority.PhaseTicksRemaining != predicted.PhaseTicksRemaining ||
+                authority.RoundTicksRemaining != predicted.RoundTicksRemaining ||
+                authority.NextProjectileId != predicted.NextProjectileId ||
+                authority.ProjectileCount != predicted.ProjectileCount ||
+                BattleConfigHash.Compute(authority.Definition!) != BattleConfigHash.Compute(predicted.Definition!))
+                return false;
+            for (int index = 0; index < authority.PlayerCount; index++)
+                if (!authority.GetPlayerState(new PlayerSlot(index)).Equals(
+                    predicted.GetPlayerState(new PlayerSlot(index)))) return false;
+            for (int index = 0; index < authority.ProjectileCount; index++)
+                if (authority.GetProjectile(index) != predicted.GetProjectile(index)) return false;
             return true;
         }
 
