@@ -19,6 +19,7 @@ message InputFrameMessage {
   sint32 move_x = 3;
   sint32 move_z = 4;
   uint32 aim = 5;
+  bool fire = 6;
 }
 
 message PlayerInputSubmissionMessage {

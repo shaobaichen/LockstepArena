@@ -30,6 +30,7 @@ namespace LockstepArena.LivePrediction.Tests
             new TestCase(nameof(NewPredictionRepeatsLatestSuccessfullyReconciledRemoteInput), NewPredictionRepeatsLatestSuccessfullyReconciledRemoteInput),
             new TestCase(nameof(RetainedPredictionsRemainFieldForFieldUnchangedAfterNewAuthority), RetainedPredictionsRemainFieldForFieldUnchangedAfterNewAuthority),
             new TestCase(nameof(ConsecutiveDirtyAuthoritiesReplayDeterministically), ConsecutiveDirtyAuthoritiesReplayDeterministically),
+            new TestCase(nameof(WrongRemoteFirePredictionRollsBackAndConvergesGameplayState), WrongRemoteFirePredictionRollsBackAndConvergesGameplayState),
         };
 
         public static readonly TestCase[] BoundedAuthorityTests =
@@ -43,6 +44,7 @@ namespace LockstepArena.LivePrediction.Tests
             new TestCase(nameof(ReplayCapacityRejectionAdmitsNoCandidateFrame), ReplayCapacityRejectionAdmitsNoCandidateFrame),
             new TestCase(nameof(ReplayHistoryNeverEvictsOrGrowsBeyondCapacity), ReplayHistoryNeverEvictsOrGrowsBeyondCapacity),
             new TestCase(nameof(ReplayReconstructsAuthoritativeStateAndDigest), ReplayReconstructsAuthoritativeStateAndDigest),
+            new TestCase(nameof(GameplayAuthorityReplayReconstructsFullStateAndDigest), GameplayAuthorityReplayReconstructsFullStateAndDigest),
             new TestCase(nameof(ReplayCorruptionEntersStickyFailStop), ReplayCorruptionEntersStickyFailStop),
         };
 
@@ -135,7 +137,7 @@ namespace LockstepArena.LivePrediction.Tests
         {
             using var fixture = new PredictedClientFixture(2);
             PredictedClientUpdateResult result = fixture.Runtime.Update(
-                new LocalInputSample(1, -1, 444));
+                new LocalInputSample(1, -1, 444, true));
 
             TestAssert.True(result.LocalPredictionSent);
             TestAssert.Equal(1, fixture.Runtime.PendingPredictionCount);
@@ -144,6 +146,7 @@ namespace LockstepArena.LivePrediction.Tests
             TestAssert.Equal((sbyte)1, sent.MoveX);
             TestAssert.Equal((sbyte)-1, sent.MoveZ);
             TestAssert.Equal((ushort)444, sent.Aim);
+            TestAssert.True(sent.Fire);
         }
 
         private static void PredictionCapacityReturnsNotSentWithoutNetworkWrite()
@@ -190,14 +193,16 @@ namespace LockstepArena.LivePrediction.Tests
                 fixture.State.Roster,
                 100U,
                 new InputFrame(100U, new PlayerSlot(0), 0, 0, 101),
-                new InputFrame(100U, new PlayerSlot(1), -1, 1, 202)));
+                new InputFrame(100U, new PlayerSlot(1), -1, 1, 202, true)));
             fixture.Runtime.Update(null);
             fixture.Runtime.Update(new LocalInputSample(0, 0, 102));
 
             PlayerState remote = fixture.Runtime.PredictedState.GetPlayerState(new PlayerSlot(1));
+            FrameData prediction = GetPredictedFrames(fixture.Runtime)[0];
             TestAssert.Equal(-100, remote.PositionX);
             TestAssert.Equal(200, remote.PositionZ);
             TestAssert.Equal((ushort)202, remote.Aim);
+            TestAssert.True(prediction.GetInput(new PlayerSlot(1)).Fire);
         }
 
         private static void RetainedPredictionsRemainFieldForFieldUnchangedAfterNewAuthority()
@@ -246,6 +251,34 @@ namespace LockstepArena.LivePrediction.Tests
             TestAssert.Equal(1, second.DirtyFrameCount);
             TestAssert.Equal(102U, fixture.Runtime.AuthoritativeState.Tick);
             TestAssert.Equal(102U, fixture.Runtime.PredictedState.Tick);
+        }
+
+        private static void WrongRemoteFirePredictionRollsBackAndConvergesGameplayState()
+        {
+            BattleState initialState = CreateGameplayState();
+            using var pair = new LoopbackPair();
+            using PredictedTcpClientBattleRuntime runtime = CreateRuntime(
+                pair.Client,
+                initialState,
+                initialState.Roster.GetPlayerId(new PlayerSlot(0)),
+                new PlayerSlot(0));
+            runtime.Update(new LocalInputSample(0, 0, 0, false));
+            FrameData authority = CreateFrame(
+                initialState.Roster,
+                0U,
+                new InputFrame(0U, new PlayerSlot(0), 0, 0, 0, false),
+                new InputFrame(0U, new PlayerSlot(1), 0, 0, 32_768, true));
+            var expectedSimulation = new BattleSimulation(initialState);
+            expectedSimulation.Step(authority);
+            SendAuthority(pair.Accepted, pair.Client, authority);
+
+            PredictedClientUpdateResult result = runtime.Update(null);
+
+            TestAssert.Equal(1, result.DirtyFrameCount);
+            TestAssert.Equal(75, runtime.AuthoritativeState.GetPlayerState(new PlayerSlot(0)).HitPoints);
+            TestAssert.True(BattleStateValueComparer.HaveSameValue(
+                expectedSimulation.State,
+                runtime.PredictedState));
         }
 
         private static void ExistingAuthorityBacklogSkipsNetworkRead()
@@ -404,6 +437,34 @@ namespace LockstepArena.LivePrediction.Tests
                 StateDigest.Compute(reconstructed));
         }
 
+        private static void GameplayAuthorityReplayReconstructsFullStateAndDigest()
+        {
+            BattleState initialState = CreateGameplayState();
+            using var pair = new LoopbackPair();
+            using PredictedTcpClientBattleRuntime runtime = CreateRuntime(
+                pair.Client,
+                initialState,
+                initialState.Roster.GetPlayerId(new PlayerSlot(0)),
+                new PlayerSlot(0));
+            FrameData authority = CreateFrame(
+                initialState.Roster,
+                0U,
+                new InputFrame(0U, new PlayerSlot(0), 0, 0, 16_384, true),
+                new InputFrame(0U, new PlayerSlot(1), 0, 0, 32_768, false));
+            SendAuthority(pair.Accepted, pair.Client, authority);
+            runtime.Update(null);
+
+            BattleState reconstructed = runtime.ReconstructAuthoritativeState();
+
+            TestAssert.Equal(1, runtime.AuthoritativeState.ProjectileCount);
+            TestAssert.True(BattleStateValueComparer.HaveSameValue(
+                runtime.AuthoritativeState,
+                reconstructed));
+            TestAssert.Equal(
+                StateDigest.Compute(runtime.AuthoritativeState),
+                StateDigest.Compute(reconstructed));
+        }
+
         private static void ReplayCorruptionEntersStickyFailStop()
         {
             using var fixture = new PredictedClientFixture(1, maxReplayFrames: 3);
@@ -515,6 +576,48 @@ namespace LockstepArena.LivePrediction.Tests
                 4093);
         }
 
+        private static BattleState CreateGameplayState()
+        {
+            var roster = new ActiveRoster(new[] { new PlayerId(101UL), new PlayerId(202UL) });
+            var gameplay = new GameplayConfig(
+                100,
+                25,
+                100,
+                2,
+                200,
+                10,
+                50,
+                10,
+                30,
+                5,
+                100,
+                1,
+                1,
+                2);
+            var arena = new ArenaConfig(
+                "prediction-test",
+                new ArenaRectangle(-1_000, 1_000, -1_000, 1_000),
+                new[] { new ArenaPoint(-100, 0), new ArenaPoint(100, 0) },
+                Array.Empty<ArenaRectangle>());
+            var definition = new BattleDefinition(gameplay, arena);
+            return new BattleState(
+                0U,
+                roster,
+                new[]
+                {
+                    new PlayerState(-100, 0, 0, 100, 0, 0),
+                    new PlayerState(100, 0, 32_768, 100, 0, 0),
+                },
+                definition,
+                BattlePhase.Playing,
+                0U,
+                100U,
+                RoundResult.None,
+                null,
+                Array.Empty<ProjectileState>(),
+                1UL);
+        }
+
         private static FrameData SinglePlayerFrame(
             ActiveRoster roster,
             uint tick,
@@ -548,18 +651,7 @@ namespace LockstepArena.LivePrediction.Tests
 
         internal static void AssertStatesEqual(BattleState expected, BattleState actual)
         {
-            TestAssert.Equal(expected.Tick, actual.Tick);
-            TestAssert.Equal(expected.PlayerCount, actual.PlayerCount);
-            TestAssert.True(expected.Roster.HasSameStructure(actual.Roster));
-            for (int index = 0; index < expected.PlayerCount; index++)
-            {
-                var slot = new PlayerSlot(index);
-                PlayerState expectedPlayer = expected.GetPlayerState(slot);
-                PlayerState actualPlayer = actual.GetPlayerState(slot);
-                TestAssert.Equal(expectedPlayer.PositionX, actualPlayer.PositionX);
-                TestAssert.Equal(expectedPlayer.PositionZ, actualPlayer.PositionZ);
-                TestAssert.Equal(expectedPlayer.Aim, actualPlayer.Aim);
-            }
+            TestAssert.True(BattleStateValueComparer.HaveSameValue(expected, actual));
         }
 
         private static void CorruptReplay(

@@ -339,6 +339,7 @@ namespace LockstepArena.Protocol
                 MoveX = input.MoveX,
                 MoveZ = input.MoveZ,
                 Aim = input.Aim,
+                Fire = input.Fire,
             };
         }
 
@@ -367,7 +368,8 @@ namespace LockstepArena.Protocol
                     new PlayerSlot(slotValue),
                     checked((sbyte)wire.MoveX),
                     checked((sbyte)wire.MoveZ),
-                    checked((ushort)wire.Aim));
+                    checked((ushort)wire.Aim),
+                    wire.Fire);
             }
             catch (ArgumentException exception)
             {

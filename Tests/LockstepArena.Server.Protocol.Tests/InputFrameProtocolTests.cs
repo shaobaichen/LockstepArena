@@ -22,7 +22,7 @@ namespace LockstepArena.Server.Protocol.Tests
         private static void InputSubmissionRoundTripPreservesValues()
         {
             var submittedPlayerId = new PlayerId(0xFFEEDDCCBBAA0099UL);
-            var input = new InputFrame(42U, new PlayerSlot(2), -1, 1, ushort.MaxValue);
+            var input = new InputFrame(42U, new PlayerSlot(2), -1, 1, ushort.MaxValue, true);
 
             PlayerInputSubmissionMessage wire = ProtocolMapper.ToWire(submittedPlayerId, input);
             (PlayerId mappedPlayerId, InputFrame mappedInput) = ProtocolMapper.ToDomain(wire);
@@ -33,6 +33,7 @@ namespace LockstepArena.Server.Protocol.Tests
             TestAssert.Equal(-1, wire.Input.MoveX);
             TestAssert.Equal(1, wire.Input.MoveZ);
             TestAssert.Equal((uint)ushort.MaxValue, wire.Input.Aim);
+            TestAssert.True(wire.Input.Fire);
             TestAssert.Equal(submittedPlayerId, mappedPlayerId);
             AssertInput(input, mappedInput);
         }
@@ -97,6 +98,7 @@ namespace LockstepArena.Server.Protocol.Tests
             TestAssert.Equal((sbyte)0, input.MoveX);
             TestAssert.Equal((sbyte)0, input.MoveZ);
             TestAssert.Equal((ushort)0, input.Aim);
+            TestAssert.Equal(false, input.Fire);
         }
 
         private static PlayerInputSubmissionMessage CreateWire()
@@ -122,6 +124,7 @@ namespace LockstepArena.Server.Protocol.Tests
             TestAssert.Equal(expected.MoveX, actual.MoveX);
             TestAssert.Equal(expected.MoveZ, actual.MoveZ);
             TestAssert.Equal(expected.Aim, actual.Aim);
+            TestAssert.Equal(expected.Fire, actual.Fire);
         }
     }
 }

@@ -8,6 +8,11 @@ namespace LockstepArena.Client.LiveTcp
     public readonly struct LocalInputSample
     {
         public LocalInputSample(sbyte moveX, sbyte moveZ, ushort aim)
+            : this(moveX, moveZ, aim, false)
+        {
+        }
+
+        public LocalInputSample(sbyte moveX, sbyte moveZ, ushort aim, bool fire)
         {
             if (moveX < -1 || moveX > 1)
             {
@@ -22,6 +27,7 @@ namespace LockstepArena.Client.LiveTcp
             MoveX = moveX;
             MoveZ = moveZ;
             Aim = aim;
+            Fire = fire;
         }
 
         public sbyte MoveX { get; }
@@ -29,6 +35,8 @@ namespace LockstepArena.Client.LiveTcp
         public sbyte MoveZ { get; }
 
         public ushort Aim { get; }
+
+        public bool Fire { get; }
     }
 
     public readonly struct PredictedClientUpdateResult
@@ -225,7 +233,7 @@ namespace LockstepArena.Client.LiveTcp
                 }
 
                 BattleState reconstructed = simulation.State;
-                if (!StatesHaveSameValue(reconstructed, _timeline.AuthoritativeState) ||
+                if (!BattleStateValueComparer.HaveSameValue(reconstructed, _timeline.AuthoritativeState) ||
                     StateDigest.Compute(reconstructed) !=
                         StateDigest.Compute(_timeline.AuthoritativeState))
                 {
@@ -358,7 +366,8 @@ namespace LockstepArena.Client.LiveTcp
                         slot,
                         localSample.MoveX,
                         localSample.MoveZ,
-                        localSample.Aim);
+                        localSample.Aim,
+                        localSample.Fire);
                     continue;
                 }
 
@@ -371,7 +380,8 @@ namespace LockstepArena.Client.LiveTcp
                         slot,
                         value.MoveX,
                         value.MoveZ,
-                        value.Aim);
+                        value.Aim,
+                        value.Fire);
                 }
                 else
                 {
@@ -403,29 +413,5 @@ namespace LockstepArena.Client.LiveTcp
             }
         }
 
-        private static bool StatesHaveSameValue(BattleState left, BattleState right)
-        {
-            if (left.Tick != right.Tick ||
-                left.PlayerCount != right.PlayerCount ||
-                !left.Roster.HasSameStructure(right.Roster))
-            {
-                return false;
-            }
-
-            for (int index = 0; index < left.PlayerCount; index++)
-            {
-                var slot = new PlayerSlot(index);
-                PlayerState leftPlayer = left.GetPlayerState(slot);
-                PlayerState rightPlayer = right.GetPlayerState(slot);
-                if (leftPlayer.PositionX != rightPlayer.PositionX ||
-                    leftPlayer.PositionZ != rightPlayer.PositionZ ||
-                    leftPlayer.Aim != rightPlayer.Aim)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
     }
 }

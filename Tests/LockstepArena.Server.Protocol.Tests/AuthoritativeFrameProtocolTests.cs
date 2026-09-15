@@ -137,6 +137,7 @@ namespace LockstepArena.Server.Protocol.Tests
                 TestAssert.Equal(expected.MoveX, actual.MoveX);
                 TestAssert.Equal(expected.MoveZ, actual.MoveZ);
                 TestAssert.Equal(expected.Aim, actual.Aim);
+                TestAssert.Equal(expected.Fire, actual.Fire);
             }
         }
 

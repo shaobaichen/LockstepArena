@@ -466,6 +466,7 @@ namespace LockstepArena.LivePrediction.Tests
                 TestAssert.Equal(expectedInput.MoveX, actualInput.MoveX);
                 TestAssert.Equal(expectedInput.MoveZ, actualInput.MoveZ);
                 TestAssert.Equal(expectedInput.Aim, actualInput.Aim);
+                TestAssert.Equal(expectedInput.Fire, actualInput.Fire);
             }
         }
 

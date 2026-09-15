@@ -197,7 +197,7 @@ namespace LockstepArena.Client.Prediction
             try
             {
                 PredictionRecord dirtyRecord = _history[0];
-                if (!StatesHaveSameValue(dirtyRecord.StateBefore, _authoritativeState))
+                if (!BattleStateValueComparer.HaveSameValue(dirtyRecord.StateBefore, _authoritativeState))
                 {
                     _faulted = true;
                     throw new InvalidOperationException(
@@ -297,7 +297,7 @@ namespace LockstepArena.Client.Prediction
                 return false;
             }
 
-            if (!StatesHaveSameValue(history[0].StateBefore, authoritativeState))
+            if (!BattleStateValueComparer.HaveSameValue(history[0].StateBefore, authoritativeState))
             {
                 return false;
             }
@@ -329,31 +329,6 @@ namespace LockstepArena.Client.Prediction
             return true;
         }
 
-        private static bool StatesHaveSameValue(BattleState left, BattleState right)
-        {
-            if (left.Tick != right.Tick ||
-                left.PlayerCount != right.PlayerCount ||
-                !left.Roster.HasSameStructure(right.Roster))
-            {
-                return false;
-            }
-
-            for (int index = 0; index < left.PlayerCount; index++)
-            {
-                PlayerSlot slot = new PlayerSlot(index);
-                PlayerState leftPlayer = left.GetPlayerState(slot);
-                PlayerState rightPlayer = right.GetPlayerState(slot);
-                if (leftPlayer.PositionX != rightPlayer.PositionX ||
-                    leftPlayer.PositionZ != rightPlayer.PositionZ ||
-                    leftPlayer.Aim != rightPlayer.Aim)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
         private static bool FramesHaveSameValue(FrameData left, FrameData right)
         {
             if (left.Tick != right.Tick ||
@@ -371,7 +346,8 @@ namespace LockstepArena.Client.Prediction
                 if (leftInput.PlayerSlot != rightInput.PlayerSlot ||
                     leftInput.MoveX != rightInput.MoveX ||
                     leftInput.MoveZ != rightInput.MoveZ ||
-                    leftInput.Aim != rightInput.Aim)
+                    leftInput.Aim != rightInput.Aim ||
+                    leftInput.Fire != rightInput.Fire)
                 {
                     return false;
                 }

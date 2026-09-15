@@ -34,6 +34,7 @@ namespace LockstepArena.Client.Prediction.Tests
             new TestCase("MoveXDifferenceIsDirty", MoveXDifferenceIsDirty),
             new TestCase("MoveZDifferenceIsDirty", MoveZDifferenceIsDirty),
             new TestCase("AimDifferenceIsDirty", AimDifferenceIsDirty),
+            new TestCase("FireDifferenceIsDirty", FireDifferenceIsDirty),
             new TestCase("DifferentInputWithSameClampedStateIsDirty", DifferentInputWithSameClampedStateIsDirty),
             new TestCase("EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames", EarliestPendingMismatchRollsBackAndReplaysAllLaterFrames),
             new TestCase("LatestPendingMismatchRollsBackWithoutLaterReplay", LatestPendingMismatchRollsBackWithoutLaterReplay),
@@ -380,6 +381,33 @@ namespace LockstepArena.Client.Prediction.Tests
             AssertPlayer(timeline.PredictedState, 0, 0, 0, 112);
         }
 
+        private static void FireDifferenceIsDirty()
+        {
+            ClientPredictionTimeline timeline = CreateTimeline(10U, 2, 4);
+            ActiveRoster roster = timeline.PredictedState.Roster;
+            FrameData predicted = FrameData.Create(
+                roster,
+                10U,
+                new[]
+                {
+                    new InputFrame(10U, new PlayerSlot(0), 0, 0, 111, true),
+                    new InputFrame(10U, new PlayerSlot(1), 0, 0, 222, false),
+                });
+            FrameData authoritative = FrameData.Create(
+                roster,
+                10U,
+                new[]
+                {
+                    new InputFrame(10U, new PlayerSlot(0), 0, 0, 111, false),
+                    new InputFrame(10U, new PlayerSlot(1), 0, 0, 222, false),
+                });
+            timeline.Predict(predicted);
+
+            bool dirty = timeline.ReconcileAuthoritative(authoritative);
+
+            TestAssert.Equal(true, dirty);
+        }
+
         private static void DifferentInputWithSameClampedStateIsDirty()
         {
             ActiveRoster roster = CreateRoster(2);
@@ -689,16 +717,8 @@ namespace LockstepArena.Client.Prediction.Tests
 
         private static void AssertStatesEqual(BattleState expected, BattleState actual)
         {
+            TestAssert.Equal(true, BattleStateValueComparer.HaveSameValue(expected, actual));
             TestAssert.Equal(StateDigest.Compute(expected), StateDigest.Compute(actual));
-            TestAssert.Equal(expected.Tick, actual.Tick);
-            TestAssert.Equal(expected.PlayerCount, actual.PlayerCount);
-            TestAssert.Equal(true, expected.Roster.HasSameStructure(actual.Roster));
-            for (int index = 0; index < expected.PlayerCount; index++)
-            {
-                PlayerSlot slot = new PlayerSlot(index);
-                PlayerState expectedPlayer = expected.GetPlayerState(slot);
-                AssertPlayer(actual, index, expectedPlayer.PositionX, expectedPlayer.PositionZ, expectedPlayer.Aim);
-            }
         }
 
         private static void AssertGoldenState(
