@@ -1,4 +1,8 @@
+#nullable enable
+
 using System;
+using System.IO;
+using System.Net;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -11,6 +15,9 @@ namespace LockstepArena.Demo.Editor.Tests
         public void UnityFormatsFrozenGoldenSettlementAndDiagnostics()
         {
             Type snapshotType = Type.GetType("LockstepArena.Client.Demo.DemoClientSnapshot, LockstepArena.Client.Demo")!;
+            Type roomType = Type.GetType("LockstepArena.Client.Demo.DemoRoomSummarySnapshot, LockstepArena.Client.Demo")!;
+            Type participantType = Type.GetType("LockstepArena.Client.Demo.DemoRoomParticipantSnapshot, LockstepArena.Client.Demo")!;
+            Type lifecycleType = Type.GetType("LockstepArena.Protocol.Wire.RoomLifecycleMessage, LockstepArena.Protocol")!;
             ConstructorInfo constructor = snapshotType.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)[0];
             object snapshot = constructor.Invoke(new object[]
             {
@@ -23,6 +30,8 @@ namespace LockstepArena.Demo.Editor.Tests
                 0xD8E54FF828A4C670UL, 0xD8E54FF828A4C670UL, true,
                 Enum.Parse(Type.GetType("LockstepArena.Protocol.Wire.BattleSettlementReasonMessage, LockstepArena.Protocol")!, "BattleSettlementReasonMatchCompleted"),
                 2UL, 2U, 1U, "Match completed.",
+                Array.CreateInstance(roomType, 0), Array.CreateInstance(participantType, 0),
+                0UL, 0U, Enum.Parse(lifecycleType, "RoomLifecycleUnspecified"),
             });
             Type controllerType = Type.GetType("LockstepArena.Demo.LockstepArenaDemoController, LockstepArena.Demo")!;
             MethodInfo formatter = controllerType.GetMethod("FormatDiagnostics", BindingFlags.Public | BindingFlags.Static)!;
@@ -121,6 +130,48 @@ namespace LockstepArena.Demo.Editor.Tests
             {
                 UnityEngine.Object.DestroyImmediate(root);
             }
+        }
+
+        [Test]
+        public void UnitySelectsPreferredPrivateLanAddress()
+        {
+            string? address = LanAddressUtility.SelectPreferredPrivateIpv4(new[]
+            {
+                IPAddress.Parse("127.0.0.1"),
+                IPAddress.Parse("169.254.1.4"),
+                IPAddress.Parse("172.20.1.4"),
+                IPAddress.Parse("10.1.2.3"),
+                IPAddress.Parse("192.168.1.23"),
+            });
+
+            Assert.That(address, Is.EqualTo("192.168.1.23"));
+        }
+
+        [Test]
+        public void UnityResolvesEditorAndPlayerDemoHostLayouts()
+        {
+            string editor = LanServerPathResolver.ResolveFromApplicationDataPath(
+                Path.Combine("E:\\", "repo", "Assets"), true);
+            string player = LanServerPathResolver.ResolveFromApplicationDataPath(
+                Path.Combine("C:\\", "Games", "LockstepArena_Data"), false);
+
+            Assert.That(editor, Does.EndWith(Path.Combine(
+                "Server", "LockstepArena.Server.DemoHost", "bin", "Release", "net8.0",
+                "LockstepArena.Server.DemoHost.exe")));
+            Assert.That(player, Is.EqualTo(Path.Combine(
+                "C:\\", "Games", "Server", "LockstepArena.Server.DemoHost.exe")));
+        }
+
+        [Test]
+        public void UnityDefinesRecoverableShellStagesAndSafeEmptyLauncher()
+        {
+            Assert.That(Enum.IsDefined(typeof(ShellConnectionStage), "StartingServer"), Is.True);
+            Assert.That(Enum.IsDefined(typeof(ShellConnectionStage), "CreatingRoom"), Is.True);
+            Assert.That(Enum.IsDefined(typeof(ShellConnectionStage), "Failed"), Is.True);
+
+            using var launcher = new LanServerLauncher();
+            launcher.StopOwned();
+            Assert.That(launcher.OwnsServer, Is.False);
         }
     }
 }
