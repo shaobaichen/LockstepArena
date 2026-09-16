@@ -216,6 +216,19 @@ namespace LockstepArena.Demo.Editor.Tests
             }
         }
 
+        [Test]
+        public void UnityExposesTheOneClickV3AWindowsBuild()
+        {
+            Type? buildType = Type.GetType(
+                "LockstepArena.Demo.Editor.V3AWindowsBuild, LockstepArena.Demo.Editor");
+            Assert.That(buildType, Is.Not.Null);
+            MethodInfo? build = buildType!.GetMethod(
+                "BuildWindowsPlayer",
+                BindingFlags.Public | BindingFlags.Static);
+            Assert.That(build, Is.Not.Null);
+            Assert.That(build!.ReturnType, Is.EqualTo(typeof(void)));
+        }
+
         private static void AssertPublicMethod(
             Type type,
             string name,
