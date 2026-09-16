@@ -1,63 +1,52 @@
 # Lockstep Arena
 
-Lockstep Arena is a small deterministic frame-synchronization learning project. The v1 demo joins two loopback TCP clients through a nickname lobby, freezes a room roster, runs the shared simulation with client prediction and authoritative rollback/replay, verifies settlement, and returns both sessions to the lobby.
+Lockstep Arena is a small deterministic lockstep gameplay demo. Two Unity clients enter a nickname session and room, freeze the battle roster, then play a server-authoritative projectile arena with client prediction, Dirty detection, rollback/re-simulation, authoritative Replay, and `StateDigest` verification.
 
 ## Prerequisites
 
-- Windows with .NET 8 SDK.
+- Windows with the .NET 8 SDK.
 - Unity `6000.3.10f1` installed at `E:\unityhub\unity6.3\Editor\Unity.exe` for the Unity demo and EditMode verification.
-- Loopback ports `46000` (CONTROL) and `46001` (BATTLE) available for the manual demo.
+- TCP ports `46000` (CONTROL) and `46001` (BATTLE) available.
 
-## Run the server
+## Build and run
 
 ```powershell
-dotnet run --project Server/LockstepArena.Server.DemoHost/LockstepArena.Server.DemoHost.csproj -c Release
+dotnet build Server/LockstepArena.Server.DemoHost/LockstepArena.Server.DemoHost.csproj -c Release
+.\Server\LockstepArena.Server.DemoHost\bin\Release\net8.0\LockstepArena.Server.DemoHost.exe --bind 0.0.0.0 --control-port 46000 --battle-port 46001
 ```
 
-The host binds only `127.0.0.1`, prints its CONTROL and BATTLE ports, and stops when `Q` is pressed in its terminal.
+The server prints its bind address and ports and stops when `Q` is pressed in its terminal. In Unity, open `Assets/LockstepArenaDemo/Scenes/LobbyScene.unity`, ensure both `LobbyScene` and `BattleScene` are enabled in Build Settings, and build a Windows x86-64 Player. Copy the entire Player output directory when moving it to another PC.
 
-## Run the Unity demo
+## Local two-client demo
 
-Open `Assets/LockstepArenaDemo/Scenes/LockstepArenaDemo.unity` in Unity. Build one Windows Player from that scene and keep a second copy running in the Editor. Use nickname `Bravo` in the first client and `Alpha` in the second. The on-screen Debug panel exposes connection phase, room list and participants, frozen battle roster, server/authority/predicted Tick, pending counts, Replay count, Dirty status, digests, and settlement verification.
+Start two copies of the Windows Player. Use server address `127.0.0.1`, unique nicknames such as `Alpha` and `Bravo`, then select `Connect` and `Enter` on both clients.
 
-## Demo procedure
+1. Alpha creates a room with capacity `2`.
+2. Bravo selects `List`, enters the room id, and selects `Join`.
+3. Both clients select `Ready`; the host selects `Start`.
+4. After `3/2/1`, use `WASD` to move, the mouse to aim, and hold the left mouse button to fire.
+5. Finish the best-of-three match, verify settlement, and select `Return To Lobby`.
+6. Without restarting the server or clients, create/join another room and start a second battle to verify clean lifecycle reuse.
 
-1. Build and start DemoHost.
-2. Open the dedicated Unity scene.
-3. Launch one Player and one Editor client.
-4. Connect the Player first and enter `Bravo`.
-5. Connect the Editor second and enter `Alpha`.
-6. Alpha creates `Golden Room` with capacity `2`.
-7. Bravo selects List and joins Room `1`.
-8. Confirm both panels show Alpha as host and Bravo as participant.
-9. Select Start from Bravo and confirm `NOT_HOST` rejection.
-10. Ready Alpha only, Start from Alpha, and confirm `NOT_READY` rejection.
-11. Ready Bravo.
-12. Start from Alpha.
-13. Confirm roster `Slot0/PlayerId2` and `Slot1/PlayerId1`.
-14. Confirm both clients enter `InBattle` after separate BATTLE attachment acceptance.
-15. Confirm the Gate 13 predicted client runtime is active on both clients.
-16. Observe server, authority and predicted Tick, pending counts, Replay and Dirty diagnostics.
-17. Confirm each client accumulates four Dirty reconciliations.
-18. Confirm settlement at State Tick `4` with digest `D8E54FF828A4C670` on both clients.
-19. Return both clients and confirm Room `1` is absent from the refreshed room list.
-20. Exit both clients, press `Q` in DemoHost, and close the Player/Editor.
+Press `F1` to show the Debug panel. It exposes connection phase, room/roster state, server/authority/predicted Tick, pending counts, Replay, Dirty count, digests, and settlement verification.
 
-The scripted Golden input is selected by the exact nicknames `Alpha` and `Bravo`. Other nicknames send neutral movement in this Debug demo.
+## LAN demo
+
+Run the server and Client A on PC A. Run `ipconfig` on PC A and note the active adapter's IPv4 address. Client A may use `127.0.0.1`; Client B on the same LAN must use PC A's IPv4 address. If Windows Firewall prompts for the server or Player, allow access on **Private networks**. Do not expose this Debug demo directly to the public Internet.
 
 ## Diagnostics
 
-`LockstepArenaDemoController` renders the current immutable client snapshot. `LatestDirty` reports the most recently reconciled authoritative frame; `CumulativeDirty` counts rollback-triggering reconciliations. `SettlementVerified=True` means final per-slot state, Tick, digest, prediction convergence, and authoritative Replay were all checked before the battle socket was released.
+`LockstepArenaDemoController` renders the current immutable client snapshot. `LatestDirty` reports the most recently reconciled authoritative frame; `CumulativeDirty` counts rollback-triggering reconciliations. `SettlementVerified=True` means final per-slot state, Tick, digest, prediction convergence, and authoritative Replay were checked before the battle socket was released.
 
 ## Verification
 
-Run the Gate 14 suite:
+Run every formal .NET test project under `Tests` and the Unity EditMode suite. For a focused current business-flow check:
 
 ```powershell
 dotnet run --project Tests/LockstepArena.DemoFlow.Tests/LockstepArena.DemoFlow.Tests.csproj -c Release
 ```
 
-It must report `RESULT 48/48 passed`. The complete verification matrix and exact Unity XML requirements are in [the Gate 14 architecture](Docs/Architecture/GATE14_MINIMAL_TCP_LOBBY_TO_BATTLE_DEMO.md).
+The complete historical verification matrix is in [the Gate 14 architecture](Docs/Architecture/GATE14_MINIMAL_TCP_LOBBY_TO_BATTLE_DEMO.md).
 
 ## Architecture and Gate history
 
@@ -79,6 +68,6 @@ It must report `RESULT 48/48 passed`. The complete verification matrix and exact
 
 See [Lockstep Arena v1 Architecture](Docs/Architecture/LOCKSTEP_ARENA_V1_ARCHITECTURE.md) for the ownership and data-flow diagram.
 
-## TCP-only v1 limitations
+## Current gameplay and limitations
 
-v1 is a loopback Debug demonstration, not a public-network service. It intentionally has no account database, password/registration, chat, matchmaking service, TLS, KCP/UDP, reconnect, heartbeat, adaptive input delay, missing-input substitution, rendering interpolation, combat system, server cluster, or generic DI/EventBus/ECS/netcode framework. A missing mature input strictly blocks later authoritative frames.
+The current gameplay is a fixed-obstacle projectile arena with hit points, round countdowns, draws, and best-of-three settlement. v1 is a TCP Debug demonstration, not a public-network service. It intentionally has no account database, password/registration, chat, matchmaking service, TLS, KCP/UDP, reconnect, heartbeat, adaptive input delay, missing-input substitution, or rendering interpolation. Slight remote visual jitter is accepted in v1. The current primitive visuals are placeholders; a later v3 Presentation / Art Pass can replace the presentation layer without changing deterministic gameplay.
