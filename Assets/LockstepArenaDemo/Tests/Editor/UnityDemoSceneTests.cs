@@ -26,5 +26,46 @@ namespace LockstepArena.Demo.Editor.Tests
                 .ToArray();
             Assert.That(controllers, Has.Length.EqualTo(1));
         }
+
+        [Test]
+        public void LobbySceneContainsTheV3GameShellCanvasAndInputSystemEventSystem()
+        {
+            const string lobbyPath = "Assets/LockstepArenaDemo/Scenes/LobbyScene.unity";
+            var scene = EditorSceneManager.OpenScene(lobbyPath, OpenSceneMode.Single);
+            GameObject[] objects = scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Transform>(true))
+                .Select(transform => transform.gameObject)
+                .ToArray();
+
+            Assert.That(objects.Count(gameObject =>
+                gameObject.GetComponent<LockstepArenaDemoController>() != null), Is.EqualTo(1));
+            Assert.That(objects.Count(gameObject =>
+                gameObject.name == "GameShellCanvas" && gameObject.GetComponent<Canvas>() != null), Is.EqualTo(1));
+            Assert.That(objects.Count(gameObject => gameObject.GetComponents<MonoBehaviour>().Any(component =>
+                component.GetType().FullName == "UnityEngine.InputSystem.UI.InputSystemUIInputModule")), Is.EqualTo(1));
+            Assert.That(objects.Count(gameObject => gameObject.GetComponents<MonoBehaviour>().Any(component =>
+                component.GetType().FullName == "LockstepArena.Demo.GameShellUiController")), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GameShellCanvasPrefabContainsEveryApprovedScreenRoot()
+        {
+            const string prefabPath = "Assets/LockstepArenaDemo/Prefabs/UI/GameShellCanvas.prefab";
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            Assert.That(prefab, Is.Not.Null);
+
+            string[] names = prefab.GetComponentsInChildren<Transform>(true)
+                .Select(transform => transform.name)
+                .ToArray();
+            Assert.That(names, Does.Contain("MainMenuScreen"));
+            Assert.That(names, Does.Contain("ModeSelectScreen"));
+            Assert.That(names, Does.Contain("CreateLanScreen"));
+            Assert.That(names, Does.Contain("JoinLanScreen"));
+            Assert.That(names, Does.Contain("ConnectingOverlay"));
+            Assert.That(names, Does.Contain("LobbyScreen"));
+            Assert.That(names, Does.Contain("RoomScreen"));
+            Assert.That(names, Does.Contain("ErrorOverlay"));
+            Assert.That(names, Does.Contain("SettingsOverlay"));
+        }
     }
 }
