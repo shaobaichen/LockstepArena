@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Reflection;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -172,6 +173,58 @@ namespace LockstepArena.Demo.Editor.Tests
             using var launcher = new LanServerLauncher();
             launcher.StopOwned();
             Assert.That(launcher.OwnsServer, Is.False);
+        }
+
+        [Test]
+        public void UnityExposesThePlayerFacingGameShellApi()
+        {
+            Type controller = typeof(LockstepArenaDemoController);
+
+            Assert.That(controller.GetProperty("ClientSnapshot")?.GetMethod?.IsPublic, Is.True);
+            Assert.That(controller.GetProperty("ShellStage")?.GetMethod?.IsPublic, Is.True);
+            Assert.That(controller.GetProperty("UserFacingError")?.GetMethod?.IsPublic, Is.True);
+            Assert.That(controller.GetProperty("HostedLanAddress")?.GetMethod?.IsPublic, Is.True);
+            Assert.That(controller.GetProperty("OwnsLocalServer")?.GetMethod?.IsPublic, Is.True);
+
+            AssertPublicMethod(controller, "BeginHostLanAsync", typeof(Task), typeof(string), typeof(string));
+            AssertPublicMethod(controller, "BeginJoinLan", typeof(void), typeof(string), typeof(string));
+            AssertPublicMethod(controller, "RefreshRooms", typeof(void));
+            AssertPublicMethod(controller, "CreateRoom", typeof(void), typeof(string));
+            AssertPublicMethod(controller, "JoinRoom", typeof(void), typeof(ulong));
+            AssertPublicMethod(controller, "LeaveRoom", typeof(void));
+            AssertPublicMethod(controller, "SetReady", typeof(void), typeof(bool));
+            AssertPublicMethod(controller, "StartBattle", typeof(void));
+            AssertPublicMethod(controller, "DisconnectToMainMenu", typeof(void));
+        }
+
+        [Test]
+        public void UnityDisconnectToMainMenuIsSafeWithoutAClient()
+        {
+            var root = new GameObject("Safe Disconnect Test");
+            try
+            {
+                LockstepArenaDemoController controller = root.AddComponent<LockstepArenaDemoController>();
+
+                Assert.DoesNotThrow(controller.DisconnectToMainMenu);
+                Assert.That(controller.ShellStage, Is.EqualTo(ShellConnectionStage.Idle));
+                Assert.That(controller.UserFacingError, Is.Empty);
+                Assert.That(controller.OwnsLocalServer, Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        private static void AssertPublicMethod(
+            Type type,
+            string name,
+            Type returnType,
+            params Type[] parameterTypes)
+        {
+            MethodInfo? method = type.GetMethod(name, BindingFlags.Instance | BindingFlags.Public, null, parameterTypes, null);
+            Assert.That(method, Is.Not.Null, $"Missing public method {name}.");
+            Assert.That(method!.ReturnType, Is.EqualTo(returnType), $"Unexpected return type for {name}.");
         }
     }
 }

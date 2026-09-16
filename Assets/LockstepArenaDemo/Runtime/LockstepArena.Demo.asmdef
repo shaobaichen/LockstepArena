@@ -6,7 +6,9 @@
     "LockstepArena.Client.LiveTcp",
     "LockstepArena.Protocol",
     "LockstepArena.Simulation",
-    "Unity.InputSystem"
+    "Unity.InputSystem",
+    "UnityEngine.UI",
+    "Unity.TextMeshPro"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

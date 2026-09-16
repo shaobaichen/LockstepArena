@@ -1,6 +1,9 @@
 #nullable enable
 using System;
-using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 using LockstepArena.Client.Demo;
 using LockstepArena.Client.LiveTcp;
 using LockstepArena.Simulation;
@@ -17,20 +20,28 @@ namespace LockstepArena.Demo
         private const int ClientPredictionCapacity = 8;
         private static LockstepArenaDemoController? _instance;
 
-        [SerializeField] private string serverAddress = "127.0.0.1";
-        [SerializeField] private string nickname = "Alpha";
-        [SerializeField] private string roomName = "Arena Room";
-        [SerializeField] private string roomId = "1";
-        [SerializeField] private string roomCapacity = "2";
         [SerializeField] private int controlPort = 46000;
+        [SerializeField] private int battlePort = 46001;
 
         private readonly BattleDefinition _definition = BattleDefinition.CreateDefault();
+        private readonly LanServerLauncher _lanServerLauncher = new LanServerLauncher();
         private TcpDemoClient? _client;
         private BattlePresenter? _presenter;
         private string _lastError = string.Empty;
+        private string? _pendingNickname;
+        private string? _pendingHostRoomName;
+        private bool _sessionEntrySent;
+        private bool _hostRoomCreateSent;
+        private int _shellFlowGeneration;
         private bool _sceneReadySent;
         private bool _debugVisible;
         private double _predictionSeconds;
+
+        public DemoClientSnapshot? ClientSnapshot => _client?.Snapshot;
+        public ShellConnectionStage ShellStage { get; private set; } = ShellConnectionStage.Idle;
+        public string UserFacingError { get; private set; } = string.Empty;
+        public string HostedLanAddress { get; private set; } = string.Empty;
+        public bool OwnsLocalServer => _lanServerLauncher.OwnsServer;
 
         private void Awake()
         {
@@ -53,7 +64,13 @@ namespace LockstepArena.Demo
             {
                 SynchronizeScene();
                 if (_client is null || _client.Phase == DemoClientPhase.Disconnected ||
-                    _client.Phase == DemoClientPhase.Faulted || _client.Phase == DemoClientPhase.Disposed) return;
+                    _client.Phase == DemoClientPhase.Disposed) return;
+                if (_client.Phase == DemoClientPhase.Faulted)
+                {
+                    FailShell(new InvalidOperationException("The network connection failed."));
+                    return;
+                }
+                AdvanceShellFlow();
                 LocalInputSample? input = null;
                 if (_client.Phase == DemoClientPhase.InBattle)
                 {
@@ -64,6 +81,7 @@ namespace LockstepArena.Demo
                     _predictionSeconds = 0d;
                 }
                 _client.PumpOnce(input);
+                AdvanceShellFlow();
                 SynchronizeScene();
                 if (_client.Phase == DemoClientPhase.InBattle && _client.PredictedBattleState is not null)
                     EnsurePresenter().Present(_client.PredictedBattleState, _client.LocalPlayerSlot);
@@ -71,6 +89,62 @@ namespace LockstepArena.Demo
             catch (Exception exception)
             {
                 _lastError = exception.Message;
+                if (_client is null || !IsBattlePhase(_client.Phase))
+                {
+                    FailShell(exception);
+                }
+            }
+        }
+
+        private void AdvanceShellFlow()
+        {
+            if (_client is null) return;
+
+            if (_client.Phase == DemoClientPhase.AwaitingSessionEntry && _pendingNickname is not null)
+            {
+                if (!_sessionEntrySent)
+                {
+                    _client.EnterSession(_pendingNickname);
+                    _sessionEntrySent = true;
+                    ShellStage = ShellConnectionStage.EnteringSession;
+                }
+                else if (_client.Snapshot.LastRejection.Length > 0)
+                {
+                    throw new InvalidOperationException("The server rejected the nickname or session entry.");
+                }
+                return;
+            }
+
+            if (_client.Phase == DemoClientPhase.Lobby)
+            {
+                _pendingNickname = null;
+                if (_pendingHostRoomName is not null)
+                {
+                    if (!_hostRoomCreateSent)
+                    {
+                        _client.CreateRoom(_pendingHostRoomName, 2);
+                        _hostRoomCreateSent = true;
+                        ShellStage = ShellConnectionStage.CreatingRoom;
+                    }
+                    else if (_client.Snapshot.LastRejection.Length > 0)
+                    {
+                        throw new InvalidOperationException("The server rejected room creation.");
+                    }
+                }
+                else
+                {
+                    ShellStage = ShellConnectionStage.Ready;
+                }
+                return;
+            }
+
+            if (_client.Phase == DemoClientPhase.Room)
+            {
+                _pendingNickname = null;
+                _pendingHostRoomName = null;
+                _sessionEntrySent = false;
+                _hostRoomCreateSent = false;
+                ShellStage = ShellConnectionStage.Ready;
             }
         }
 
@@ -156,44 +230,15 @@ namespace LockstepArena.Demo
         private void OnGUI()
         {
             if (_instance != this) return;
-            GUILayout.BeginArea(new Rect(16, 16, 720, 700), GUI.skin.box);
-            GUILayout.Label("Lockstep Arena Gameplay Sample v1");
             DemoClientPhase phase = _client?.Phase ?? DemoClientPhase.Disconnected;
-            if (phase == DemoClientPhase.Disconnected || phase == DemoClientPhase.ConnectingControl ||
-                phase == DemoClientPhase.AwaitingSessionEntry || phase == DemoClientPhase.Lobby ||
-                phase == DemoClientPhase.Room)
-                DrawLobby(phase);
-            else
-                DrawBattleHud();
-            if (_debugVisible && _client is not null) GUILayout.TextArea(FormatDiagnostics(_client.Snapshot));
-            if (_lastError.Length > 0) GUILayout.Label("Error: " + _lastError);
-            GUILayout.EndArea();
-        }
+            bool showBattleHud = IsBattlePhase(phase);
+            if (!showBattleHud && !_debugVisible) return;
 
-        private void DrawLobby(DemoClientPhase phase)
-        {
-            serverAddress = LabeledText("Server", serverAddress);
-            nickname = LabeledText("Nickname", nickname);
-            roomName = LabeledText("Room name", roomName);
-            roomId = LabeledText("Room id", roomId);
-            roomCapacity = LabeledText("Capacity", roomCapacity);
-            GUILayout.BeginHorizontal();
-            Button("Connect", phase == DemoClientPhase.Disconnected, Connect);
-            Button("Enter", phase == DemoClientPhase.AwaitingSessionEntry, () => _client!.EnterSession(nickname));
-            Button("List", phase == DemoClientPhase.Lobby || phase == DemoClientPhase.Room, () => _client!.RequestRoomList());
-            Button("Create", phase == DemoClientPhase.Lobby, () => _client!.CreateRoom(roomName, ParsePositive(roomCapacity)));
-            Button("Join", phase == DemoClientPhase.Lobby, () => _client!.JoinRoom(ulong.Parse(roomId, CultureInfo.InvariantCulture)));
-            Button("Leave", phase == DemoClientPhase.Room, () => _client!.LeaveRoom());
-            Button("Ready", phase == DemoClientPhase.Room, () => _client!.SetReady(true));
-            Button("Unready", phase == DemoClientPhase.Room, () => _client!.SetReady(false));
-            Button("Start", phase == DemoClientPhase.Room, () => _client!.StartBattle());
-            GUILayout.EndHorizontal();
-            if (_client is null) return;
-            DemoClientSnapshot snapshot = _client.Snapshot;
-            GUILayout.Label("Phase: " + snapshot.Phase);
-            GUILayout.Label("Rooms: " + snapshot.RoomList);
-            GUILayout.Label("Participants: " + snapshot.RoomParticipants);
-            if (snapshot.LastRejection.Length > 0) GUILayout.Label("Last response: " + snapshot.LastRejection);
+            GUILayout.BeginArea(new Rect(16, 16, 720, 700), GUI.skin.box);
+            if (showBattleHud) DrawBattleHud();
+            if (_debugVisible && _client is not null) GUILayout.TextArea(FormatDiagnostics(_client.Snapshot));
+            if (_debugVisible && _lastError.Length > 0) GUILayout.Label("Error: " + _lastError);
+            GUILayout.EndArea();
         }
 
         private void DrawBattleHud()
@@ -241,32 +286,177 @@ namespace LockstepArena.Demo
                 $"Winner={snapshot.WinnerPlayerId} Score={snapshot.Slot0RoundWins}-{snapshot.Slot1RoundWins}";
         }
 
-        private void Connect()
+        public async Task BeginHostLanAsync(string nickname, string roomName)
         {
+            string validNickname = RequireText(nickname, nameof(nickname));
+            string validRoomName = RequireText(roomName, nameof(roomName));
+            DisconnectToMainMenu();
+            int generation = ++_shellFlowGeneration;
+            try
+            {
+                ShellStage = ShellConnectionStage.StartingServer;
+                _lanServerLauncher.StartOwned(LanServerPathResolver.Resolve(), controlPort, battlePort);
+                ShellStage = ShellConnectionStage.WaitingForServer;
+                await _lanServerLauncher.WaitUntilReadyAsync(
+                    "127.0.0.1",
+                    controlPort,
+                    TimeSpan.FromSeconds(5));
+                if (generation != _shellFlowGeneration) return;
+
+                HostedLanAddress = LanAddressUtility.FindPreferredPrivateIpv4() ?? "Unavailable";
+                _pendingNickname = validNickname;
+                _pendingHostRoomName = validRoomName;
+                CreateAndConnectClient("127.0.0.1");
+            }
+            catch (Exception exception)
+            {
+                if (generation == _shellFlowGeneration) FailShell(exception);
+            }
+        }
+
+        public void BeginJoinLan(string nickname, string serverAddress)
+        {
+            string validNickname = RequireText(nickname, nameof(nickname));
+            if (!IPAddress.TryParse(serverAddress, out IPAddress? address) ||
+                address.AddressFamily != AddressFamily.InterNetwork)
+            {
+                throw new ArgumentException("Server address must be a numeric IPv4 address.", nameof(serverAddress));
+            }
+
+            DisconnectToMainMenu();
+            ++_shellFlowGeneration;
+            try
+            {
+                _pendingNickname = validNickname;
+                CreateAndConnectClient(address.ToString());
+            }
+            catch (Exception exception)
+            {
+                FailShell(exception);
+            }
+        }
+
+        public void RefreshRooms()
+        {
+            RequireClient().RequestRoomList();
+        }
+
+        public void CreateRoom(string roomName)
+        {
+            RequireClient().CreateRoom(RequireText(roomName, nameof(roomName)), 2);
+        }
+
+        public void JoinRoom(ulong roomId)
+        {
+            RequireClient().JoinRoom(roomId);
+        }
+
+        public void LeaveRoom()
+        {
+            RequireClient().LeaveRoom();
+        }
+
+        public void SetReady(bool value)
+        {
+            RequireClient().SetReady(value);
+        }
+
+        public void StartBattle()
+        {
+            RequireClient().StartBattle();
+        }
+
+        public void DisconnectToMainMenu()
+        {
+            if (_client is not null && IsBattlePhase(_client.Phase))
+            {
+                throw new InvalidOperationException("Disconnect to main menu is not available during battle.");
+            }
+
+            ++_shellFlowGeneration;
             _client?.Dispose();
+            _client = null;
+            _lanServerLauncher.StopOwned();
+            _pendingNickname = null;
+            _pendingHostRoomName = null;
+            _sessionEntrySent = false;
+            _hostRoomCreateSent = false;
+            _sceneReadySent = false;
+            _predictionSeconds = 0d;
+            _presenter?.Clear();
+            _presenter = null;
+            HostedLanAddress = string.Empty;
+            UserFacingError = string.Empty;
+            _lastError = string.Empty;
+            ShellStage = ShellConnectionStage.Idle;
+        }
+
+        private void CreateAndConnectClient(string address)
+        {
             _client = new TcpDemoClient(new DemoClientOptions(
                 controlPort, 4096, 32768, 1024, 7, 257, 8, 512,
                 ClientPredictionCapacity, 16, 64, 4096, 4096, 1024, 11, 251,
-                serverAddress, _definition));
+                address, _definition));
             _client.BeginConnect();
+            _sessionEntrySent = false;
+            _hostRoomCreateSent = false;
             _lastError = string.Empty;
+            UserFacingError = string.Empty;
             _sceneReadySent = false;
+            ShellStage = ShellConnectionStage.Connecting;
         }
 
-        private static string LabeledText(string label, string value)
+        private TcpDemoClient RequireClient()
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(90));
-            string result = GUILayout.TextField(value);
-            GUILayout.EndHorizontal();
-            return result;
+            return _client ?? throw new InvalidOperationException("No server connection is active.");
         }
 
-        private static int ParsePositive(string value)
+        private void FailShell(Exception exception)
         {
-            int result = int.Parse(value, CultureInfo.InvariantCulture);
-            if (result < 1) throw new ArgumentOutOfRangeException(nameof(value));
-            return result;
+            _lastError = exception.ToString();
+            UserFacingError = HumanizeShellError(exception);
+            ShellStage = ShellConnectionStage.Failed;
+            _client?.Dispose();
+            _client = null;
+            _lanServerLauncher.StopOwned();
+            _pendingNickname = null;
+            _pendingHostRoomName = null;
+            _sessionEntrySent = false;
+            _hostRoomCreateSent = false;
+        }
+
+        private static string HumanizeShellError(Exception exception)
+        {
+            if (exception is FileNotFoundException)
+                return "找不到本地服务器程序，请先完成 Windows 构建。";
+            if (exception is TimeoutException)
+                return "服务器启动或连接超时，请检查端口与防火墙后重试。";
+            if (exception is SocketException socketException && socketException.SocketErrorCode == SocketError.AddressAlreadyInUse)
+                return "服务器端口已被占用，请关闭旧服务器后重试。";
+            if (exception is SocketException)
+                return "无法连接服务器，请检查局域网地址、防火墙和服务器状态。";
+            if (exception is ArgumentException)
+                return "输入无效，请检查昵称、房间名和 IPv4 地址。";
+            if (exception.Message.IndexOf("nickname", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "昵称不可用，请更换昵称后重试。";
+            if (exception.Message.IndexOf("room", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "创建房间失败，请修改房间名后重试。";
+            return "连接流程失败，请重试或返回主菜单。";
+        }
+
+        private static string RequireText(string value, string parameterName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentException("A non-empty value is required.", parameterName);
+            return value.Trim();
+        }
+
+        private static bool IsBattlePhase(DemoClientPhase phase)
+        {
+            return phase == DemoClientPhase.PreparingBattle ||
+                   phase == DemoClientPhase.InBattle ||
+                   phase == DemoClientPhase.SettlementPendingAuthority ||
+                   phase == DemoClientPhase.Settlement;
         }
 
         private void Button(string label, bool enabled, Action action)
@@ -275,8 +465,15 @@ namespace LockstepArena.Demo
             GUI.enabled = enabled;
             if (GUILayout.Button(label))
             {
-                try { action(); _lastError = string.Empty; }
-                catch (Exception exception) { _lastError = exception.Message; }
+                try
+                {
+                    action();
+                    _lastError = string.Empty;
+                }
+                catch (Exception exception)
+                {
+                    _lastError = exception.ToString();
+                }
             }
             GUI.enabled = previous;
         }
@@ -285,6 +482,7 @@ namespace LockstepArena.Demo
         {
             if (_instance != this) return;
             _client?.Dispose();
+            _lanServerLauncher.Dispose();
             _instance = null;
         }
     }
