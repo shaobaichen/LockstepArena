@@ -30,7 +30,48 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(OpenNonHostLeaveRemovesOnlyThatParticipant), OpenNonHostLeaveRemovesOnlyThatParticipant),
             new TestCase(nameof(OpenHostLossClosesRoomAndReturnsSurvivorsToLobby), OpenHostLossClosesRoomAndReturnsSurvivorsToLobby),
             new TestCase(nameof(LanEndpointsUseConfiguredIpv4AddressAndValidateOptions), LanEndpointsUseConfiguredIpv4AddressAndValidateOptions),
+            new TestCase(nameof(TcpClientsExposeStructuredLobbyAndRoomReadModels), TcpClientsExposeStructuredLobbyAndRoomReadModels),
         };
+
+        private static void TcpClientsExposeStructuredLobbyAndRoomReadModels()
+        {
+            using var server = CreateServer();
+            using var host = CreateClient(server);
+            using var guest = CreateClient(server);
+            host.BeginConnect();
+            guest.BeginConnect();
+            PumpUntil(server, host, guest, DemoClientPhase.AwaitingSessionEntry);
+            host.EnterSession("Host");
+            guest.EnterSession("Guest");
+            PumpUntil(server, host, guest, DemoClientPhase.Lobby);
+
+            host.CreateRoom("Room", 2);
+            PumpUntil(server, host, DemoClientPhase.Room);
+            guest.RequestRoomList();
+            PumpUntil(server, host, guest, () => guest.Snapshot.Rooms.Count == 1);
+
+            DemoClientSnapshot lobby = guest.Snapshot;
+            TestAssert.Equal(1, lobby.Rooms.Count);
+            TestAssert.Equal("Room", lobby.Rooms[0].RoomName);
+            TestAssert.Equal((uint)2, lobby.Rooms[0].Capacity);
+            TestAssert.Equal((uint)1, lobby.Rooms[0].ParticipantCount);
+            TestAssert.Equal(RoomLifecycleMessage.RoomLifecycleOpen, lobby.Rooms[0].Lifecycle);
+
+            guest.JoinRoom(lobby.Rooms[0].RoomId);
+            PumpUntil(server, host, guest, DemoClientPhase.Room);
+            host.SetReady(true);
+            PumpUntil(server, host, guest, () => host.Snapshot.Participants.Count == 2 &&
+                host.Snapshot.Participants[0].IsReady);
+
+            DemoClientSnapshot room = host.Snapshot;
+            TestAssert.Equal(room.SessionId, room.RoomHostSessionId);
+            TestAssert.Equal((uint)2, room.RoomCapacity);
+            TestAssert.Equal(RoomLifecycleMessage.RoomLifecycleOpen, room.RoomLifecycle);
+            TestAssert.Equal(2, room.Participants.Count);
+            TestAssert.True(room.Participants[0].IsHost);
+            TestAssert.True(room.Participants[0].IsReady);
+            TestAssert.Equal("Guest", room.Participants[1].Nickname);
+        }
 
         private static void NicknameValidationUsesTrimControlUtf8AndOrdinalRules()
         {
@@ -89,6 +130,39 @@ namespace LockstepArena.DemoFlow.Tests
                 client.PumpOnce(null);
             }
             TestAssert.Equal(phase, client.Phase);
+        }
+
+        private static void PumpUntil(
+            TcpDemoServer server,
+            TcpDemoClient first,
+            TcpDemoClient second,
+            DemoClientPhase phase)
+        {
+            PumpUntil(server, first, second, () => first.Phase == phase && second.Phase == phase);
+            TestAssert.Equal(phase, first.Phase);
+            TestAssert.Equal(phase, second.Phase);
+        }
+
+        private static void PumpUntil(
+            TcpDemoServer server,
+            TcpDemoClient first,
+            TcpDemoClient second,
+            Func<bool> complete)
+        {
+            for (int index = 0; index < 800 && !complete(); index++)
+            {
+                server.PumpOnce();
+                first.PumpOnce(null);
+                second.PumpOnce(null);
+            }
+            TestAssert.True(complete());
+        }
+
+        private static TcpDemoClient CreateClient(TcpDemoServer server)
+        {
+            return new TcpDemoClient(new DemoClientOptions(
+                server.ControlPort, 1024, 2048, 32, 3, 8, 4, 64,
+                4, 4, 8, 16, 1024, 32, 3, 8));
         }
 
         private static void RoomNameValidationUsesTrimControlAndUtf8Rules()

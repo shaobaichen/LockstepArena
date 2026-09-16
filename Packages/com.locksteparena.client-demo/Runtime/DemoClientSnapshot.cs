@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using LockstepArena.Protocol.Wire;
 
 namespace LockstepArena.Client.Demo
@@ -31,7 +33,12 @@ namespace LockstepArena.Client.Demo
             ulong winnerPlayerId,
             uint slot0RoundWins,
             uint slot1RoundWins,
-            string settlementDetail)
+            string settlementDetail,
+            DemoRoomSummarySnapshot[] rooms,
+            DemoRoomParticipantSnapshot[] participants,
+            ulong roomHostSessionId,
+            uint roomCapacity,
+            RoomLifecycleMessage roomLifecycle)
         {
             Phase = phase;
             SessionId = sessionId;
@@ -60,6 +67,11 @@ namespace LockstepArena.Client.Demo
             Slot0RoundWins = slot0RoundWins;
             Slot1RoundWins = slot1RoundWins;
             SettlementDetail = settlementDetail;
+            Rooms = Array.AsReadOnly((DemoRoomSummarySnapshot[])rooms.Clone());
+            Participants = Array.AsReadOnly((DemoRoomParticipantSnapshot[])participants.Clone());
+            RoomHostSessionId = roomHostSessionId;
+            RoomCapacity = roomCapacity;
+            RoomLifecycle = roomLifecycle;
         }
 
         public DemoClientPhase Phase { get; }
@@ -89,5 +101,10 @@ namespace LockstepArena.Client.Demo
         public uint Slot0RoundWins { get; }
         public uint Slot1RoundWins { get; }
         public string SettlementDetail { get; }
+        public IReadOnlyList<DemoRoomSummarySnapshot> Rooms { get; }
+        public IReadOnlyList<DemoRoomParticipantSnapshot> Participants { get; }
+        public ulong RoomHostSessionId { get; }
+        public uint RoomCapacity { get; }
+        public RoomLifecycleMessage RoomLifecycle { get; }
     }
 }

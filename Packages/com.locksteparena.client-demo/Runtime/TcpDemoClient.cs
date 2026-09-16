@@ -32,6 +32,11 @@ namespace LockstepArena.Client.Demo
         private string _roomName = string.Empty;
         private string _roomList = string.Empty;
         private string _roomParticipants = string.Empty;
+        private DemoRoomSummarySnapshot[] _rooms = Array.Empty<DemoRoomSummarySnapshot>();
+        private DemoRoomParticipantSnapshot[] _participants = Array.Empty<DemoRoomParticipantSnapshot>();
+        private ulong _roomHostSessionId;
+        private uint _roomCapacity;
+        private RoomLifecycleMessage _roomLifecycle;
         private ulong _battleId;
         private string _battleRoster = string.Empty;
         private string _lastRejection = string.Empty;
@@ -116,7 +121,12 @@ namespace LockstepArena.Client.Demo
                     _winnerPlayerId,
                     _slot0RoundWins,
                     _slot1RoundWins,
-                    _settlementDetail);
+                    _settlementDetail,
+                    _rooms,
+                    _participants,
+                    _roomHostSessionId,
+                    _roomCapacity,
+                    _roomLifecycle);
             }
         }
 
@@ -342,6 +352,10 @@ namespace LockstepArena.Client.Demo
                     _roomId = message.RoomSnapshot.RoomId;
                     _roomName = message.RoomSnapshot.RoomName;
                     _roomParticipants = FormatRoomParticipants(message.RoomSnapshot);
+                    _participants = MapRoomParticipants(message.RoomSnapshot);
+                    _roomHostSessionId = message.RoomSnapshot.HostSessionId;
+                    _roomCapacity = message.RoomSnapshot.Capacity;
+                    _roomLifecycle = message.RoomSnapshot.Lifecycle;
                     _phase = DemoClientPhase.Room;
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattlePreparing:
@@ -366,6 +380,7 @@ namespace LockstepArena.Client.Demo
                     break;
                 case ServerControlEventMessage.EventOneofCase.RoomList:
                     _roomList = FormatRoomList(message.RoomList);
+                    _rooms = MapRoomList(message.RoomList);
                     break;
                 case ServerControlEventMessage.EventOneofCase.BattleStatus:
                     ReceiveBattleStatus(message.BattleStatus);
@@ -737,6 +752,10 @@ namespace LockstepArena.Client.Demo
             _roomId = 0;
             _roomName = string.Empty;
             _roomParticipants = string.Empty;
+            _participants = Array.Empty<DemoRoomParticipantSnapshot>();
+            _roomHostSessionId = 0;
+            _roomCapacity = 0;
+            _roomLifecycle = RoomLifecycleMessage.RoomLifecycleUnspecified;
             _battleId = 0;
             _battleRoster = string.Empty;
             _preparing = null;
@@ -809,6 +828,23 @@ namespace LockstepArena.Client.Demo
             return result.ToString();
         }
 
+        private static DemoRoomSummarySnapshot[] MapRoomList(RoomListEventMessage roomList)
+        {
+            var result = new DemoRoomSummarySnapshot[roomList.Rooms.Count];
+            for (int index = 0; index < result.Length; index++)
+            {
+                RoomSummaryMessage room = roomList.Rooms[index];
+                result[index] = new DemoRoomSummarySnapshot(
+                    room.RoomId,
+                    room.RoomName,
+                    room.HostNickname,
+                    room.ParticipantCount,
+                    room.Capacity,
+                    room.Lifecycle);
+            }
+            return result;
+        }
+
         private static string FormatRoomParticipants(RoomSnapshotEventMessage room)
         {
             var result = new StringBuilder();
@@ -822,6 +858,22 @@ namespace LockstepArena.Client.Demo
                 result.Append(participant.IsReady ? " ready" : " unready");
             }
             return result.ToString();
+        }
+
+        private static DemoRoomParticipantSnapshot[] MapRoomParticipants(RoomSnapshotEventMessage room)
+        {
+            var result = new DemoRoomParticipantSnapshot[room.Participants.Count];
+            for (int index = 0; index < result.Length; index++)
+            {
+                RoomParticipantMessage participant = room.Participants[index];
+                result[index] = new DemoRoomParticipantSnapshot(
+                    participant.SessionId,
+                    participant.Nickname,
+                    participant.IsHost,
+                    participant.IsReady,
+                    participant.JoinOrdinal);
+            }
+            return result;
         }
 
         private static string FormatBattleRoster(ActiveRoster roster)
