@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace LockstepArena.Demo.Editor.Tests
 {
@@ -43,6 +44,83 @@ namespace LockstepArena.Demo.Editor.Tests
         {
             Assert.That(Type.GetType("LockstepArena.Demo.LockstepArenaDemoController, LockstepArena.Demo"), Is.Not.Null);
             Assert.That(Type.GetType("LockstepArena.Demo.BattlePresenter, LockstepArena.Demo"), Is.Not.Null);
+        }
+
+        [Test]
+        public void UnityGameplayPredictionCapacityMatchesServerFutureWindow()
+        {
+            Type controllerType = Type.GetType("LockstepArena.Demo.LockstepArenaDemoController, LockstepArena.Demo")!;
+            FieldInfo capacity = controllerType.GetField(
+                "ClientPredictionCapacity",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            Assert.That(capacity, Is.Not.Null);
+            Assert.That(capacity.GetRawConstantValue(), Is.EqualTo(8));
+        }
+
+        [Test]
+        public void UnityLoadsSupportedDemoUnlitShader()
+        {
+            Shader shader = Resources.Load<Shader>("LockstepArenaDemoUnlit");
+
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.isSupported, Is.True);
+        }
+
+        [Test]
+        public void UnityDemoContinuesPumpingWhenWindowLosesFocus()
+        {
+            bool previous = Application.runInBackground;
+            var root = new GameObject("Background Pump Test");
+            try
+            {
+                LockstepArenaDemoController controller = root.AddComponent<LockstepArenaDemoController>();
+                Application.runInBackground = false;
+                MethodInfo awake = typeof(LockstepArenaDemoController).GetMethod(
+                    "Awake",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                try
+                {
+                    awake.Invoke(controller, null);
+                }
+                catch (TargetInvocationException exception) when (
+                    exception.InnerException is InvalidOperationException invalidOperation &&
+                    invalidOperation.Message.Contains("DontDestroyOnLoad"))
+                {
+                    // EditMode cannot execute the final player-only persistence call.
+                }
+
+                Assert.That(Application.runInBackground, Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                Application.runInBackground = previous;
+            }
+        }
+
+        [Test]
+        public void UnityPredictionInputUsesSimulationTickCadence()
+        {
+            MethodInfo pacer = typeof(LockstepArenaDemoController).GetMethod(
+                "ConsumePredictionTick",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            Assert.That(pacer, Is.Not.Null);
+            var root = new GameObject("Prediction Pacer Test");
+            try
+            {
+                LockstepArenaDemoController controller = root.AddComponent<LockstepArenaDemoController>();
+                Assert.That((bool)pacer.Invoke(controller, new object[] { 0.01d })!, Is.False);
+                Assert.That((bool)pacer.Invoke(controller, new object[] { 0.01d })!, Is.False);
+                Assert.That((bool)pacer.Invoke(controller, new object[] { 0.01d })!, Is.False);
+                Assert.That((bool)pacer.Invoke(controller, new object[] { 0.004d })!, Is.True);
+                Assert.That((bool)pacer.Invoke(controller, new object[] { 0d })!, Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
         }
     }
 }

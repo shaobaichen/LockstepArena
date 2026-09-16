@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using LockstepArena.Simulation;
 using UnityEngine;
@@ -9,11 +10,14 @@ namespace LockstepArena.Demo
     {
         public const float WorldUnitsPerSimulationUnit = 1000f;
         private const float SimulationToWorld = 1f / WorldUnitsPerSimulationUnit;
+        private static readonly int BaseColorProperty = Shader.PropertyToID("_BaseColor");
         private readonly Dictionary<int, GameObject> _players = new Dictionary<int, GameObject>();
         private readonly Dictionary<ulong, GameObject> _projectiles = new Dictionary<ulong, GameObject>();
         private readonly List<ulong> _staleProjectileIds = new List<ulong>();
+        private readonly MaterialPropertyBlock _colorProperties = new MaterialPropertyBlock();
         private GameObject? _arenaRoot;
         private BattleDefinition? _definition;
+        private Material? _material;
 
         public Camera? GameplayCamera { get; private set; }
 
@@ -21,6 +25,9 @@ namespace LockstepArena.Demo
         {
             if (_definition is not null) return;
             _definition = definition;
+            Shader shader = Resources.Load<Shader>("LockstepArenaDemoUnlit") ??
+                throw new InvalidOperationException("The demo unlit shader could not be loaded.");
+            _material = new Material(shader);
             CreateArena(definition);
             CreateCamera();
         }
@@ -36,10 +43,10 @@ namespace LockstepArena.Demo
                     player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                     player.name = "Player " + (index + 1);
                     player.transform.SetParent(transform, false);
-                    player.GetComponent<Renderer>().material.color =
+                    SetColor(player.GetComponent<Renderer>(),
                         localSlot.HasValue && localSlot.Value.Value == index
                             ? new Color(0.15f, 0.65f, 1f)
-                            : new Color(1f, 0.3f, 0.2f);
+                            : new Color(1f, 0.3f, 0.2f));
                     float diameter = state.Definition!.Gameplay.PlayerRadiusUnits * 2 * SimulationToWorld;
                     player.transform.localScale = new Vector3(diameter, 0.75f, diameter);
                     _players.Add(index, player);
@@ -61,7 +68,7 @@ namespace LockstepArena.Demo
                     projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                     projectile.name = "Projectile " + value.ProjectileId;
                     projectile.transform.SetParent(transform, false);
-                    projectile.GetComponent<Renderer>().material.color = new Color(1f, 0.85f, 0.1f);
+                    SetColor(projectile.GetComponent<Renderer>(), new Color(1f, 0.85f, 0.1f));
                     float diameter = state.Definition!.Gameplay.ProjectileRadiusUnits * 2 * SimulationToWorld;
                     projectile.transform.localScale = Vector3.one * diameter;
                     _projectiles.Add(value.ProjectileId, projectile);
@@ -86,9 +93,11 @@ namespace LockstepArena.Demo
             _staleProjectileIds.Clear();
             if (_arenaRoot is not null) Destroy(_arenaRoot);
             if (GameplayCamera is not null) Destroy(GameplayCamera.gameObject);
+            if (_material is not null) Destroy(_material);
             _arenaRoot = null;
             GameplayCamera = null;
             _definition = null;
+            _material = null;
         }
 
         private void CreateArena(BattleDefinition definition)
@@ -102,7 +111,7 @@ namespace LockstepArena.Demo
             floor.transform.position = ToWorld((bounds.MinX + bounds.MaxX) / 2, -0.1f, (bounds.MinZ + bounds.MaxZ) / 2);
             floor.transform.localScale = new Vector3((bounds.MaxX - bounds.MinX) * SimulationToWorld,
                 0.2f, (bounds.MaxZ - bounds.MinZ) * SimulationToWorld);
-            floor.GetComponent<Renderer>().material.color = new Color(0.18f, 0.24f, 0.2f);
+            SetColor(floor.GetComponent<Renderer>(), new Color(0.18f, 0.24f, 0.2f));
             for (int index = 0; index < definition.Arena.ObstacleCount; index++)
             {
                 ArenaRectangle obstacle = definition.Arena.GetObstacle(index);
@@ -112,8 +121,16 @@ namespace LockstepArena.Demo
                 cover.transform.position = ToWorld((obstacle.MinX + obstacle.MaxX) / 2, 0.75f, (obstacle.MinZ + obstacle.MaxZ) / 2);
                 cover.transform.localScale = new Vector3((obstacle.MaxX - obstacle.MinX) * SimulationToWorld,
                     1.5f, (obstacle.MaxZ - obstacle.MinZ) * SimulationToWorld);
-                cover.GetComponent<Renderer>().material.color = new Color(0.35f, 0.38f, 0.42f);
+                SetColor(cover.GetComponent<Renderer>(), new Color(0.35f, 0.38f, 0.42f));
             }
+        }
+
+        private void SetColor(Renderer renderer, Color color)
+        {
+            renderer.sharedMaterial = _material;
+            _colorProperties.Clear();
+            _colorProperties.SetColor(BaseColorProperty, color);
+            renderer.SetPropertyBlock(_colorProperties);
         }
 
         private void CreateCamera()

@@ -14,6 +14,7 @@ namespace LockstepArena.Demo
     {
         private const string LobbySceneName = "LobbyScene";
         private const string BattleSceneName = "BattleScene";
+        private const int ClientPredictionCapacity = 8;
         private static LockstepArenaDemoController? _instance;
 
         [SerializeField] private string serverAddress = "127.0.0.1";
@@ -29,6 +30,7 @@ namespace LockstepArena.Demo
         private string _lastError = string.Empty;
         private bool _sceneReadySent;
         private bool _debugVisible;
+        private double _predictionSeconds;
 
         private void Awake()
         {
@@ -37,6 +39,7 @@ namespace LockstepArena.Demo
                 Destroy(gameObject);
                 return;
             }
+            Application.runInBackground = true;
             _instance = this;
             DontDestroyOnLoad(gameObject);
         }
@@ -51,7 +54,15 @@ namespace LockstepArena.Demo
                 SynchronizeScene();
                 if (_client is null || _client.Phase == DemoClientPhase.Disconnected ||
                     _client.Phase == DemoClientPhase.Faulted || _client.Phase == DemoClientPhase.Disposed) return;
-                LocalInputSample? input = _client.Phase == DemoClientPhase.InBattle ? ReadGameplayInput() : null;
+                LocalInputSample? input = null;
+                if (_client.Phase == DemoClientPhase.InBattle)
+                {
+                    if (ConsumePredictionTick(Time.unscaledDeltaTime)) input = ReadGameplayInput();
+                }
+                else
+                {
+                    _predictionSeconds = 0d;
+                }
                 _client.PumpOnce(input);
                 SynchronizeScene();
                 if (_client.Phase == DemoClientPhase.InBattle && _client.PredictedBattleState is not null)
@@ -101,6 +112,15 @@ namespace LockstepArena.Demo
                 ((keyboard?.sKey.isPressed ?? false) ? 1 : 0));
             bool fire = Mouse.current?.leftButton.isPressed ?? false;
             return new LocalInputSample(moveX, moveZ, GetCurrentAim(), fire);
+        }
+
+        private bool ConsumePredictionTick(double elapsedSeconds)
+        {
+            _predictionSeconds += elapsedSeconds;
+            double secondsPerTick = 1d / SimulationConfig.TickRate;
+            if (_predictionSeconds < secondsPerTick) return false;
+            _predictionSeconds -= secondsPerTick;
+            return true;
         }
 
         private ushort GetCurrentAim()
@@ -226,7 +246,7 @@ namespace LockstepArena.Demo
             _client?.Dispose();
             _client = new TcpDemoClient(new DemoClientOptions(
                 controlPort, 4096, 32768, 1024, 7, 257, 8, 512,
-                12, 16, 64, 4096, 4096, 1024, 11, 251,
+                ClientPredictionCapacity, 16, 64, 4096, 4096, 1024, 11, 251,
                 serverAddress, _definition));
             _client.BeginConnect();
             _lastError = string.Empty;
