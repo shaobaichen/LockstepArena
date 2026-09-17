@@ -40,6 +40,9 @@ namespace LockstepArena.Client.Demo
         private ulong _battleId;
         private string _battleRoster = string.Empty;
         private string _lastRejection = string.Empty;
+        private ControlRejectReasonMessage _lastRejectionReason;
+        private string _lastRejectionDetail = string.Empty;
+        private bool _rejectionPending;
         private BattlePreparingEventMessage? _preparing;
         private BattleState? _battleInitialState;
         private BattleState? _lastBattleState;
@@ -89,6 +92,24 @@ namespace LockstepArena.Client.Demo
         public PlayerSlot? LocalPlayerSlot => _preparing is null
             ? (PlayerSlot?)null
             : new PlayerSlot(checked((int)_preparing.LocalPlayerSlot));
+
+        public bool TryConsumeRejection(
+            out ControlRejectReasonMessage reason,
+            out string detail)
+        {
+            if (!_rejectionPending)
+            {
+                reason = ControlRejectReasonMessage.ControlRejectReasonUnspecified;
+                detail = string.Empty;
+                return false;
+            }
+
+            reason = _lastRejectionReason;
+            detail = _lastRejectionDetail;
+            _rejectionPending = false;
+            return true;
+        }
+
         public DemoClientSnapshot Snapshot
         {
             get
@@ -371,7 +392,10 @@ namespace LockstepArena.Client.Demo
                     ReceiveSettlement(message.BattleSettlement);
                     break;
                 case ServerControlEventMessage.EventOneofCase.CommandRejected:
-                    _lastRejection = FormatRejection(message.CommandRejected.Reason);
+                    _lastRejectionReason = message.CommandRejected.Reason;
+                    _lastRejectionDetail = message.CommandRejected.Detail;
+                    _lastRejection = FormatRejection(_lastRejectionReason);
+                    _rejectionPending = true;
                     break;
                 case ServerControlEventMessage.EventOneofCase.LobbyEntered:
                     ClearRoomAndBattlePresentation();

@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using LockstepArena.Client.Demo;
 using LockstepArena.Client.LiveTcp;
+using LockstepArena.Protocol.Wire;
 using LockstepArena.Simulation;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -366,6 +367,20 @@ namespace LockstepArena.Demo
             RequireClient().StartBattle();
         }
 
+        public bool TryConsumeCommandRejection(out string message)
+        {
+            if (_client is null || !_client.TryConsumeRejection(
+                    out ControlRejectReasonMessage reason,
+                    out string detail))
+            {
+                message = string.Empty;
+                return false;
+            }
+
+            message = HumanizeCommandRejection(reason, detail);
+            return true;
+        }
+
         public void DisconnectToMainMenu()
         {
             if (_client is not null && IsBattlePhase(_client.Phase))
@@ -442,6 +457,32 @@ namespace LockstepArena.Demo
             if (exception.Message.IndexOf("room", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "创建房间失败，请修改房间名后重试。";
             return "连接流程失败，请重试或返回主菜单。";
+        }
+
+        private static string HumanizeCommandRejection(
+            ControlRejectReasonMessage reason,
+            string detail)
+        {
+            return reason switch
+            {
+                ControlRejectReasonMessage.ControlRejectReasonRoomNotFound =>
+                    "房间不存在或已关闭，请刷新房间列表。",
+                ControlRejectReasonMessage.ControlRejectReasonRoomFull =>
+                    "房间已满，请选择其他房间。",
+                ControlRejectReasonMessage.ControlRejectReasonNotHost =>
+                    "只有房主可以开始比赛。",
+                ControlRejectReasonMessage.ControlRejectReasonNotReady =>
+                    "所有玩家准备后才能开始比赛。",
+                ControlRejectReasonMessage.ControlRejectReasonNicknameInUse =>
+                    "昵称已被使用，请更换昵称。",
+                ControlRejectReasonMessage.ControlRejectReasonResourceLimit =>
+                    "服务器资源已满，请稍后重试。",
+                ControlRejectReasonMessage.ControlRejectReasonInvalidValue =>
+                    "服务器拒绝了该输入，请检查后重试。",
+                ControlRejectReasonMessage.ControlRejectReasonInvalidPhase =>
+                    "当前状态无法执行该操作，请刷新后重试。",
+                _ => "服务器拒绝了该操作，请重试。",
+            };
         }
 
         private static string RequireText(string value, string parameterName)

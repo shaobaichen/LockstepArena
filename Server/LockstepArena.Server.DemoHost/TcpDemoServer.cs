@@ -328,8 +328,14 @@ namespace LockstepArena.Server.DemoHost
 
         internal DemoRoom GetRoom(ulong roomId)
         {
-            for (int index = 0; index < _rooms.Count; index++) if (_rooms[index].RoomId == roomId) return _rooms[index];
-            throw new InvalidOperationException("Room was not found.");
+            return FindRoom(roomId) ?? throw new InvalidOperationException("Room was not found.");
+        }
+
+        private DemoRoom? FindRoom(ulong roomId)
+        {
+            for (int index = 0; index < _rooms.Count; index++)
+                if (_rooms[index].RoomId == roomId) return _rooms[index];
+            return null;
         }
 
         internal void MarkBattleReady(ulong sessionId, ulong battleId, ulong battleConfigHash)
@@ -783,8 +789,7 @@ namespace LockstepArena.Server.DemoHost
                         CreateRoom(creator.SessionId, command.CreateRoom.RoomName, checked((int)command.CreateRoom.Capacity));
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.JoinRoom:
-                        DemoSession joiner = RequireNamed(connection);
-                        JoinRoom(joiner.SessionId, command.JoinRoom.RoomId);
+                        ProcessJoinRoom(connection, command.JoinRoom.RoomId);
                         break;
                     case ClientControlCommandMessage.CommandOneofCase.LeaveRoom:
                         DemoSession leaver = RequireNamed(connection);
@@ -859,6 +864,32 @@ namespace LockstepArena.Server.DemoHost
             var result = new RoomListEventMessage();
             result.Rooms.Add(GetRoomSummaries());
             return result;
+        }
+
+        private void ProcessJoinRoom(ControlConnection connection, ulong roomId)
+        {
+            DemoSession joiner = RequireNamed(connection);
+            RequirePhase(joiner, DemoSessionPhase.Lobby);
+            DemoRoom? room = FindRoom(roomId);
+            if (room is null || room.Lifecycle != DemoRoomLifecycle.Open)
+            {
+                QueueRejection(
+                    connection,
+                    ControlRejectReasonMessage.ControlRejectReasonRoomNotFound,
+                    "Room was not found.");
+                return;
+            }
+
+            if (room.ParticipantCount >= room.Capacity)
+            {
+                QueueRejection(
+                    connection,
+                    ControlRejectReasonMessage.ControlRejectReasonRoomFull,
+                    "Room is full.");
+                return;
+            }
+
+            JoinRoom(joiner.SessionId, roomId);
         }
 
         private void ProcessStartBattle(ControlConnection connection)

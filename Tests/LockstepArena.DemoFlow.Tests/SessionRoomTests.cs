@@ -31,6 +31,8 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(OpenHostLossClosesRoomAndReturnsSurvivorsToLobby), OpenHostLossClosesRoomAndReturnsSurvivorsToLobby),
             new TestCase(nameof(LanEndpointsUseConfiguredIpv4AddressAndValidateOptions), LanEndpointsUseConfiguredIpv4AddressAndValidateOptions),
             new TestCase(nameof(TcpClientsExposeStructuredLobbyAndRoomReadModels), TcpClientsExposeStructuredLobbyAndRoomReadModels),
+            new TestCase(nameof(AsyncCommandRejectionsAreTypedConsumableAndDoNotPolluteSuccess), AsyncCommandRejectionsAreTypedConsumableAndDoNotPolluteSuccess),
+            new TestCase(nameof(JoinRacesReturnRoomNotFoundAndRoomFullRejections), JoinRacesReturnRoomNotFoundAndRoomFullRejections),
         };
 
         private static void TcpClientsExposeStructuredLobbyAndRoomReadModels()
@@ -71,6 +73,83 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.True(room.Participants[0].IsHost);
             TestAssert.True(room.Participants[0].IsReady);
             TestAssert.Equal("Guest", room.Participants[1].Nickname);
+        }
+
+        private static void AsyncCommandRejectionsAreTypedConsumableAndDoNotPolluteSuccess()
+        {
+            using var server = CreateServer();
+            using var host = CreateClient(server);
+            using var guest = CreateClient(server);
+            host.BeginConnect();
+            guest.BeginConnect();
+            PumpUntil(server, host, guest, DemoClientPhase.AwaitingSessionEntry);
+            host.EnterSession("Host");
+            guest.EnterSession("Guest");
+            PumpUntil(server, host, guest, DemoClientPhase.Lobby);
+            host.CreateRoom("Room", 2);
+            PumpUntil(server, host, DemoClientPhase.Room);
+            guest.JoinRoom(host.Snapshot.RoomId);
+            PumpUntil(server, host, guest, DemoClientPhase.Room);
+
+            guest.StartBattle();
+            (ControlRejectReasonMessage notHost, string notHostDetail) =
+                PumpUntilRejection(server, host, guest, guest);
+            TestAssert.Equal(ControlRejectReasonMessage.ControlRejectReasonNotHost, notHost);
+            TestAssert.Equal("Only the host may start.", notHostDetail);
+            TestAssert.True(!guest.TryConsumeRejection(out _, out _));
+
+            host.StartBattle();
+            (ControlRejectReasonMessage notReady, string notReadyDetail) =
+                PumpUntilRejection(server, host, guest, host);
+            TestAssert.Equal(ControlRejectReasonMessage.ControlRejectReasonNotReady, notReady);
+            TestAssert.Equal("Every participant must be ready.", notReadyDetail);
+            TestAssert.True(!host.TryConsumeRejection(out _, out _));
+
+            host.SetReady(true);
+            guest.SetReady(true);
+            PumpUntil(server, host, guest, () => host.Snapshot.Participants.Count == 2 &&
+                host.Snapshot.Participants[0].IsReady && host.Snapshot.Participants[1].IsReady);
+            TestAssert.True(!host.TryConsumeRejection(out _, out _));
+            TestAssert.True(!guest.TryConsumeRejection(out _, out _));
+        }
+
+        private static void JoinRacesReturnRoomNotFoundAndRoomFullRejections()
+        {
+            using var server = CreateServer();
+            using var host = CreateClient(server);
+            using var guest = CreateClient(server);
+            using var late = CreateClient(server);
+            host.BeginConnect();
+            guest.BeginConnect();
+            late.BeginConnect();
+            PumpUntil(server, host, guest, late, () =>
+                host.Phase == DemoClientPhase.AwaitingSessionEntry &&
+                guest.Phase == DemoClientPhase.AwaitingSessionEntry &&
+                late.Phase == DemoClientPhase.AwaitingSessionEntry);
+            host.EnterSession("Host");
+            guest.EnterSession("Guest");
+            late.EnterSession("Late");
+            PumpUntil(server, host, guest, late, () =>
+                host.Phase == DemoClientPhase.Lobby &&
+                guest.Phase == DemoClientPhase.Lobby &&
+                late.Phase == DemoClientPhase.Lobby);
+
+            late.JoinRoom(999UL);
+            (ControlRejectReasonMessage missing, string missingDetail) =
+                PumpUntilRejection(server, host, guest, late, late);
+            TestAssert.Equal(ControlRejectReasonMessage.ControlRejectReasonRoomNotFound, missing);
+            TestAssert.Equal("Room was not found.", missingDetail);
+
+            host.CreateRoom("Room", 2);
+            PumpUntil(server, host, DemoClientPhase.Room);
+            guest.JoinRoom(host.Snapshot.RoomId);
+            PumpUntil(server, host, guest, DemoClientPhase.Room);
+            late.JoinRoom(host.Snapshot.RoomId);
+            (ControlRejectReasonMessage full, string fullDetail) =
+                PumpUntilRejection(server, host, guest, late, late);
+            TestAssert.Equal(ControlRejectReasonMessage.ControlRejectReasonRoomFull, full);
+            TestAssert.Equal("Room is full.", fullDetail);
+            TestAssert.Equal(DemoClientPhase.Lobby, late.Phase);
         }
 
         private static void NicknameValidationUsesTrimControlUtf8AndOrdinalRules()
@@ -156,6 +235,59 @@ namespace LockstepArena.DemoFlow.Tests
                 second.PumpOnce(null);
             }
             TestAssert.True(complete());
+        }
+
+        private static void PumpUntil(
+            TcpDemoServer server,
+            TcpDemoClient first,
+            TcpDemoClient second,
+            TcpDemoClient third,
+            Func<bool> complete)
+        {
+            for (int index = 0; index < 800 && !complete(); index++)
+            {
+                server.PumpOnce();
+                first.PumpOnce(null);
+                second.PumpOnce(null);
+                third.PumpOnce(null);
+            }
+            TestAssert.True(complete());
+        }
+
+        private static (ControlRejectReasonMessage Reason, string Detail) PumpUntilRejection(
+            TcpDemoServer server,
+            TcpDemoClient first,
+            TcpDemoClient second,
+            TcpDemoClient target)
+        {
+            for (int index = 0; index < 800; index++)
+            {
+                server.PumpOnce();
+                first.PumpOnce(null);
+                second.PumpOnce(null);
+                if (target.TryConsumeRejection(out ControlRejectReasonMessage reason, out string detail))
+                    return (reason, detail);
+            }
+            throw new InvalidOperationException("Expected a command rejection.");
+        }
+
+        private static (ControlRejectReasonMessage Reason, string Detail) PumpUntilRejection(
+            TcpDemoServer server,
+            TcpDemoClient first,
+            TcpDemoClient second,
+            TcpDemoClient third,
+            TcpDemoClient target)
+        {
+            for (int index = 0; index < 800; index++)
+            {
+                server.PumpOnce();
+                first.PumpOnce(null);
+                second.PumpOnce(null);
+                third.PumpOnce(null);
+                if (target.TryConsumeRejection(out ControlRejectReasonMessage reason, out string detail))
+                    return (reason, detail);
+            }
+            throw new InvalidOperationException("Expected a command rejection.");
         }
 
         private static TcpDemoClient CreateClient(TcpDemoServer server)

@@ -3,6 +3,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -178,6 +179,77 @@ namespace LockstepArena.Demo.Editor.Tests
         }
 
         [Test]
+        public void UnityHostLauncherRejectsOccupiedControlPortWithoutClosingExistingListener()
+        {
+            var listener = new TcpListener(IPAddress.Any, 0);
+            try
+            {
+                listener.Start();
+                int controlPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                int battlePort = GetUnusedTcpPort(controlPort);
+                using var launcher = new LanServerLauncher();
+
+                SocketException exception = Assert.Throws<SocketException>(() => launcher.StartOwned(
+                    Path.Combine(Environment.SystemDirectory, "where.exe"),
+                    controlPort,
+                    battlePort))!;
+
+                Assert.That(exception.SocketErrorCode, Is.EqualTo(SocketError.AddressAlreadyInUse));
+                Assert.That(listener.Server.IsBound, Is.True);
+                Assert.That(launcher.OwnsServer, Is.False);
+
+                MethodInfo humanize = typeof(LockstepArenaDemoController).GetMethod(
+                    "HumanizeShellError",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                Assert.That(
+                    humanize.Invoke(null, new object[] { exception }),
+                    Is.EqualTo("服务器端口已被占用，请关闭旧服务器后重试。"));
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        [Test]
+        public async Task UnityReadinessRejectsExitedOwnedProcessEvenWhenPortLaterAccepts()
+        {
+            int controlPort = GetUnusedTcpPort();
+            int battlePort = GetUnusedTcpPort(controlPort);
+            using var launcher = new LanServerLauncher();
+            launcher.StartOwned(
+                Path.Combine(Environment.SystemDirectory, "hostname.exe"),
+                controlPort,
+                battlePort);
+            for (int attempt = 0; attempt < 100 && launcher.OwnsServer; attempt++)
+            {
+                await Task.Delay(20);
+            }
+            Assert.That(launcher.OwnsServer, Is.False, "The test process must exit before readiness is probed.");
+
+            var listener = new TcpListener(IPAddress.Any, controlPort);
+            try
+            {
+                listener.Start();
+
+                try
+                {
+                    await launcher.WaitUntilReadyAsync("127.0.0.1", controlPort, TimeSpan.FromSeconds(1));
+                    Assert.Fail("An exited owned process must not accept a different listener as ready.");
+                }
+                catch (InvalidOperationException)
+                {
+                }
+                Assert.That(listener.Server.IsBound, Is.True);
+                Assert.That(launcher.OwnsServer, Is.False);
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        [Test]
         public void UnityExposesThePlayerFacingGameShellApi()
         {
             Type controller = typeof(LockstepArenaDemoController);
@@ -291,6 +363,89 @@ namespace LockstepArena.Demo.Editor.Tests
             }
         }
 
+        [Test]
+        public void UnityHumanizesEveryApprovedAsyncRejection()
+        {
+            MethodInfo? humanize = typeof(LockstepArenaDemoController).GetMethod(
+                "HumanizeCommandRejection",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(humanize, Is.Not.Null);
+
+            Type reasonType = Type.GetType(
+                "LockstepArena.Protocol.Wire.ControlRejectReasonMessage, LockstepArena.Protocol")!;
+            (string Reason, string Expected)[] cases =
+            {
+                ("ControlRejectReasonRoomNotFound", "房间不存在或已关闭，请刷新房间列表。"),
+                ("ControlRejectReasonRoomFull", "房间已满，请选择其他房间。"),
+                ("ControlRejectReasonNotHost", "只有房主可以开始比赛。"),
+                ("ControlRejectReasonNotReady", "所有玩家准备后才能开始比赛。"),
+                ("ControlRejectReasonUnspecified", "服务器拒绝了该操作，请重试。"),
+            };
+
+            foreach ((string reason, string expected) in cases)
+            {
+                object value = Enum.Parse(reasonType, reason);
+                string actual = (string)humanize!.Invoke(null, new[] { value, "raw detail" })!;
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That(actual, Does.Not.Contain(reason));
+                Assert.That(actual, Does.Not.Contain("raw detail"));
+            }
+        }
+
+        [Test]
+        public void UnityAsyncRejectionOverlayDismissesWithoutDisconnectingOrRepeating()
+        {
+            GameObject shellRoot = PrefabUtility.LoadPrefabContents(
+                "Assets/LockstepArenaDemo/Prefabs/UI/GameShellCanvas.prefab");
+            var controllerRoot = new GameObject("Async Rejection Test Controller");
+            object client = CreateDetachedDemoClient();
+            try
+            {
+                GameShellUiController shell = shellRoot.GetComponent<GameShellUiController>();
+                LockstepArenaDemoController controller = controllerRoot.AddComponent<LockstepArenaDemoController>();
+                typeof(LockstepArenaDemoController).GetField(
+                    "_client",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(controller, client);
+                typeof(GameShellUiController).GetField(
+                    "controller",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(shell, controller);
+                InjectCommandRejection(client, "ControlRejectReasonNotHost", "Only the host may start.");
+
+                InvokePrivate(shell, "Update");
+
+                GameObject errorOverlay = (GameObject)typeof(GameShellUiController).GetField(
+                    "errorOverlay",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(shell)!;
+                string localError = (string)typeof(GameShellUiController).GetField(
+                    "localError",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(shell)!;
+                Assert.That(errorOverlay.activeSelf, Is.True);
+                Assert.That(localError, Is.EqualTo("只有房主可以开始比赛。"));
+
+                MethodInfo? dismiss = typeof(GameShellUiController).GetMethod(
+                    "DismissError",
+                    BindingFlags.Instance | BindingFlags.Public);
+                Assert.That(dismiss, Is.Not.Null);
+                dismiss!.Invoke(shell, null);
+                Assert.That(typeof(LockstepArenaDemoController).GetField(
+                    "_client",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller), Is.SameAs(client));
+
+                InvokePrivate(shell, "Update");
+                localError = (string)typeof(GameShellUiController).GetField(
+                    "localError",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(shell)!;
+                Assert.That(errorOverlay.activeSelf, Is.False);
+                Assert.That(localError, Is.Empty);
+            }
+            finally
+            {
+                ((IDisposable)client).Dispose();
+                UnityEngine.Object.DestroyImmediate(controllerRoot);
+                PrefabUtility.UnloadPrefabContents(shellRoot);
+            }
+        }
+
         private static void AssertPublicMethod(
             Type type,
             string name,
@@ -300,6 +455,65 @@ namespace LockstepArena.Demo.Editor.Tests
             MethodInfo? method = type.GetMethod(name, BindingFlags.Instance | BindingFlags.Public, null, parameterTypes, null);
             Assert.That(method, Is.Not.Null, $"Missing public method {name}.");
             Assert.That(method!.ReturnType, Is.EqualTo(returnType), $"Unexpected return type for {name}.");
+        }
+
+        private static int GetUnusedTcpPort(int excludedPort = 0)
+        {
+            while (true)
+            {
+                var listener = new TcpListener(IPAddress.Any, 0);
+                try
+                {
+                    listener.Start();
+                    int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                    if (port != excludedPort) return port;
+                }
+                finally
+                {
+                    listener.Stop();
+                }
+            }
+        }
+
+        private static object CreateDetachedDemoClient()
+        {
+            Type optionsType = Type.GetType(
+                "LockstepArena.Client.Demo.DemoClientOptions, LockstepArena.Client.Demo")!;
+            object options = Activator.CreateInstance(optionsType, new object?[]
+            {
+                46000, 1024, 2048, 32, 3, 8, 4, 64,
+                4, 4, 8, 16, 1024, 32, 3, 8,
+                "127.0.0.1", null,
+            })!;
+            Type clientType = Type.GetType(
+                "LockstepArena.Client.Demo.TcpDemoClient, LockstepArena.Client.Demo")!;
+            return Activator.CreateInstance(clientType, options)!;
+        }
+
+        private static void InjectCommandRejection(object client, string reasonName, string detail)
+        {
+            Type reasonType = Type.GetType(
+                "LockstepArena.Protocol.Wire.ControlRejectReasonMessage, LockstepArena.Protocol")!;
+            Type rejectionType = Type.GetType(
+                "LockstepArena.Protocol.Wire.CommandRejectedEventMessage, LockstepArena.Protocol")!;
+            object rejection = Activator.CreateInstance(rejectionType)!;
+            rejectionType.GetProperty("Reason")!.SetValue(rejection, Enum.Parse(reasonType, reasonName));
+            rejectionType.GetProperty("Detail")!.SetValue(rejection, detail);
+
+            Type eventType = Type.GetType(
+                "LockstepArena.Protocol.Wire.ServerControlEventMessage, LockstepArena.Protocol")!;
+            object message = Activator.CreateInstance(eventType)!;
+            eventType.GetProperty("CommandRejected")!.SetValue(message, rejection);
+            client.GetType().GetMethod(
+                "ProcessEvent",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(client, new[] { message });
+        }
+
+        private static void InvokePrivate(object target, string methodName)
+        {
+            target.GetType().GetMethod(
+                methodName,
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, null);
         }
     }
 }

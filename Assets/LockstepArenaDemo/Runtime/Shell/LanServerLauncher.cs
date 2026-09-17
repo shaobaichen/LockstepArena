@@ -3,6 +3,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -41,6 +42,11 @@ namespace LockstepArena.Demo
                 ownedProcess = null;
             }
 
+            using (Socket controlSocket = BindAvailablePort(controlPort))
+            using (Socket battleSocket = BindAvailablePort(battlePort))
+            {
+            }
+
             string workingDirectory = Path.GetDirectoryName(Path.GetFullPath(executablePath))!;
             var startInfo = new ProcessStartInfo
             {
@@ -72,6 +78,7 @@ namespace LockstepArena.Demo
             Exception? lastFailure = null;
             while (stopwatch.Elapsed < timeout)
             {
+                ThrowIfOwnedProcessExited();
                 using var client = new TcpClient();
                 try
                 {
@@ -80,6 +87,7 @@ namespace LockstepArena.Demo
                     if (completed == connect)
                     {
                         await connect;
+                        ThrowIfOwnedProcessExited();
                         return;
                     }
 
@@ -98,6 +106,26 @@ namespace LockstepArena.Demo
             throw new TimeoutException(
                 $"DemoHost did not become ready at {address}:{port} within {timeout.TotalSeconds:0.##} seconds.",
                 lastFailure);
+        }
+
+        private void ThrowIfOwnedProcessExited()
+        {
+            Process? process = ownedProcess;
+            if (process == null)
+            {
+                throw new InvalidOperationException("No owned DemoHost process is starting.");
+            }
+
+            if (!process.HasExited)
+            {
+                return;
+            }
+
+            int exitCode = process.ExitCode;
+            process.Dispose();
+            ownedProcess = null;
+            throw new InvalidOperationException(
+                $"DemoHost exited during startup with exit code {exitCode}.");
         }
 
         public void StopOwned()
@@ -133,6 +161,23 @@ namespace LockstepArena.Demo
             if (port < 1 || port > ushort.MaxValue)
             {
                 throw new ArgumentOutOfRangeException(parameterName);
+            }
+        }
+
+        private static Socket BindAvailablePort(int port)
+        {
+            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                socket.ExclusiveAddressUse = true;
+                socket.Bind(new IPEndPoint(IPAddress.Any, port));
+                socket.Listen(1);
+                return socket;
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
             }
         }
 

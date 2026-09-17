@@ -65,6 +65,7 @@ namespace LockstepArena.Demo
         private string roomsFingerprint = string.Empty;
         private string localError = string.Empty;
         private Func<Task>? retryAction;
+        private bool preserveConnectionOnError;
 
         private enum ShellScreen
         {
@@ -99,6 +100,13 @@ namespace LockstepArena.Demo
                 RefreshLobby(snapshot);
             }
 
+            if (controller.TryConsumeCommandRejection(out string rejection))
+            {
+                localError = rejection;
+                retryAction = null;
+                preserveConnectionOnError = true;
+            }
+
             bool connecting = controller.ShellStage != ShellConnectionStage.Idle &&
                               controller.ShellStage != ShellConnectionStage.Ready &&
                               controller.ShellStage != ShellConnectionStage.Failed;
@@ -119,6 +127,7 @@ namespace LockstepArena.Demo
                 controller.DisconnectToMainMenu();
             localError = string.Empty;
             retryAction = null;
+            preserveConnectionOnError = false;
             ShowScreen(ShellScreen.MainMenu);
         }
 
@@ -145,7 +154,21 @@ namespace LockstepArena.Demo
         public async void Retry()
         {
             localError = string.Empty;
+            preserveConnectionOnError = false;
             if (retryAction != null) await retryAction();
+        }
+
+        public void DismissError()
+        {
+            if (!preserveConnectionOnError)
+            {
+                ShowMainMenu();
+                return;
+            }
+
+            localError = string.Empty;
+            retryAction = null;
+            preserveConnectionOnError = false;
         }
 
         public void RefreshRooms() => Execute(controller.RefreshRooms);
@@ -182,6 +205,7 @@ namespace LockstepArena.Demo
         private async Task HostLanAsync(string nickname, string roomName)
         {
             localError = string.Empty;
+            preserveConnectionOnError = false;
             try
             {
                 await controller.BeginHostLanAsync(nickname, roomName);
@@ -195,6 +219,7 @@ namespace LockstepArena.Demo
         private Task JoinLanAsync(string nickname, string address)
         {
             localError = string.Empty;
+            preserveConnectionOnError = false;
             try
             {
                 if (!IPAddress.TryParse(address, out IPAddress? parsed) ||
@@ -212,6 +237,7 @@ namespace LockstepArena.Demo
         private void Execute(Action action)
         {
             localError = string.Empty;
+            preserveConnectionOnError = false;
             try { action(); }
             catch (Exception exception) { localError = HumanizeInputError(exception); }
         }
@@ -308,7 +334,7 @@ namespace LockstepArena.Demo
             Bind("RoomScreen/ReadyButton", ToggleReady);
             Bind("RoomScreen/StartButton", StartBattle);
             Bind("ErrorOverlay/RetryButton", Retry);
-            Bind("ErrorOverlay/BackButton", ShowMainMenu);
+            Bind("ErrorOverlay/BackButton", DismissError);
             Bind("SettingsOverlay/BackButton", () => ToggleSettings(false));
             Bind("CreateRoomModal/CreateButton", CreateRoom);
             Bind("CreateRoomModal/CancelButton", CloseCreateRoomModal);
