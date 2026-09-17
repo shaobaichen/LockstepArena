@@ -9,7 +9,6 @@ using LockstepArena.Client.Demo;
 using LockstepArena.Protocol.Wire;
 using TMPro;
 using UnityEngine;
-using UnityEngine.TextCore;
 using UnityEngine.UI;
 
 namespace LockstepArena.Demo
@@ -302,6 +301,7 @@ namespace LockstepArena.Demo
             Bind("JoinLanScreen/BackButton", () => ShowScreen(ShellScreen.ModeSelect));
             Bind("LobbyScreen/RefreshButton", RefreshRooms);
             Bind("LobbyScreen/CreateRoomButton", OpenCreateRoomModal);
+            Bind("LobbyScreen/RoomDetails/JoinSelectedRoomButton", JoinSelectedRoom);
             Bind("LobbyScreen/BackButton", ShowMainMenu);
             Bind("RoomScreen/LeaveButton", LeaveRoom);
             Bind("RoomScreen/CopyAddressButton", CopyInviteAddress);
@@ -333,10 +333,14 @@ namespace LockstepArena.Demo
         {
             if (runtimeFont == null)
             {
-                Font font = Font.CreateDynamicFontFromOSFont(
-                    new[] { "Microsoft YaHei UI", "Microsoft YaHei", "Arial" }, 48);
-                runtimeFont = TMP_FontAsset.CreateFontAsset(font);
-                runtimeFont.atlasPopulationMode = AtlasPopulationMode.Dynamic;
+                foreach (string family in new[] { "Microsoft YaHei UI", "Microsoft YaHei", "Arial" })
+                {
+                    runtimeFont = TMP_FontAsset.CreateFontAsset(family, "Regular", 48);
+                    if (runtimeFont != null) break;
+                }
+
+                if (runtimeFont == null)
+                    throw new InvalidOperationException("No supported Windows UI font is installed.");
             }
             return runtimeFont;
         }

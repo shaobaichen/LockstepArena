@@ -6,7 +6,9 @@ using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace LockstepArena.Demo.Editor.Tests
 {
@@ -227,6 +229,66 @@ namespace LockstepArena.Demo.Editor.Tests
                 BindingFlags.Public | BindingFlags.Static);
             Assert.That(build, Is.Not.Null);
             Assert.That(build!.ReturnType, Is.EqualTo(typeof(void)));
+        }
+
+        [Test]
+        public void UnityPackagesTmpEssentialResourcesForPlayerStartup()
+        {
+            Type settingsType = Type.GetType("TMPro.TMP_Settings, Unity.TextMeshPro")!;
+            UnityEngine.Object? settings = Resources.Load("TMP Settings", settingsType);
+
+            Assert.That(settings, Is.Not.Null);
+            PropertyInfo? defaultFont = settingsType.GetProperty("defaultFontAsset");
+            Assert.That(defaultFont, Is.Not.Null);
+            Assert.That(defaultFont!.GetValue(settings), Is.Not.Null);
+        }
+
+        [Test]
+        public void UnityCreatesTheShellFontFromAWindowsSystemFontReference()
+        {
+            MethodInfo? method = typeof(GameShellUiController).GetMethod(
+                "GetRuntimeFont",
+                BindingFlags.NonPublic | BindingFlags.Static);
+
+            Assert.That(method, Is.Not.Null);
+            object? font = method!.Invoke(null, null);
+            Assert.That(font, Is.Not.Null);
+            PropertyInfo? populationMode = font!.GetType().GetProperty("atlasPopulationMode");
+            Assert.That(populationMode, Is.Not.Null);
+            Assert.That(populationMode!.GetValue(font)?.ToString(), Is.EqualTo("DynamicOS"));
+        }
+
+        [Test]
+        public void UnityLobbyJoinButtonInvokesTheShellJoinCommand()
+        {
+            GameObject shellRoot = PrefabUtility.LoadPrefabContents(
+                "Assets/LockstepArenaDemo/Prefabs/UI/GameShellCanvas.prefab");
+            var controllerRoot = new GameObject("Join Command Test Controller");
+            try
+            {
+                GameShellUiController shell = shellRoot.GetComponent<GameShellUiController>();
+                LockstepArenaDemoController controller = controllerRoot.AddComponent<LockstepArenaDemoController>();
+                typeof(GameShellUiController).GetField(
+                    "controller",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(shell, controller);
+                typeof(GameShellUiController).GetMethod(
+                    "WireButtons",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(shell, null);
+
+                Button join = shellRoot.transform.Find(
+                    "LobbyScreen/RoomDetails/JoinSelectedRoomButton")!.GetComponent<Button>();
+                join.onClick.Invoke();
+
+                string error = (string)typeof(GameShellUiController).GetField(
+                    "localError",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(shell)!;
+                Assert.That(error, Is.Not.Empty);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(controllerRoot);
+                PrefabUtility.UnloadPrefabContents(shellRoot);
+            }
         }
 
         private static void AssertPublicMethod(
