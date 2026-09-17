@@ -3,6 +3,7 @@
   "rootNamespace": "LockstepArena.Demo.Editor",
   "references": [
     "LockstepArena.Demo",
+    "LockstepArena.Simulation",
     "Unity.InputSystem",
     "Unity.TextMeshPro",
     "UnityEngine.UI"

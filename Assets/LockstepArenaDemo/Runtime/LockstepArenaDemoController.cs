@@ -28,6 +28,7 @@ namespace LockstepArena.Demo
         private readonly LanServerLauncher _lanServerLauncher = new LanServerLauncher();
         private TcpDemoClient? _client;
         private BattlePresenter? _presenter;
+        private BattleHudView? _hud;
         private string _lastError = string.Empty;
         private string? _pendingNickname;
         private string? _pendingHostRoomName;
@@ -84,8 +85,12 @@ namespace LockstepArena.Demo
                 _client.PumpOnce(input);
                 AdvanceShellFlow();
                 SynchronizeScene();
-                if (_client.Phase == DemoClientPhase.InBattle && _client.PredictedBattleState is not null)
-                    EnsurePresenter().Present(_client.PredictedBattleState, _client.LocalPlayerSlot);
+                if (IsBattlePhase(_client.Phase) && _client.PredictedBattleState is not null)
+                {
+                    BattleState state = _client.PredictedBattleState;
+                    EnsurePresenter().Present(state, _client.LocalPlayerSlot);
+                    EnsureHud().Present(state, _client.Phase, _client.Snapshot, ReturnToLobby);
+                }
             }
             catch (Exception exception)
             {
@@ -168,6 +173,8 @@ namespace LockstepArena.Demo
             {
                 _presenter?.Clear();
                 _presenter = null;
+                if (_hud is not null) Destroy(_hud.gameObject);
+                _hud = null;
                 SceneManager.LoadScene(LobbySceneName);
                 return;
             }
@@ -228,15 +235,21 @@ namespace LockstepArena.Demo
             return _presenter;
         }
 
+        private BattleHudView EnsureHud()
+        {
+            if (_hud is not null) return _hud;
+            var hudObject = new GameObject("v3-B Formal Battle HUD");
+            hudObject.transform.SetParent(transform, false);
+            _hud = hudObject.AddComponent<BattleHudView>();
+            _hud.Configure(BattlePresentationCatalog.LoadRequired());
+            return _hud;
+        }
+
         private void OnGUI()
         {
             if (_instance != this) return;
-            DemoClientPhase phase = _client?.Phase ?? DemoClientPhase.Disconnected;
-            bool showBattleHud = IsBattlePhase(phase);
-            if (!showBattleHud && !_debugVisible) return;
-
-            GUILayout.BeginArea(new Rect(16, 16, 720, 700), GUI.skin.box);
-            if (showBattleHud) DrawBattleHud();
+            if (!_debugVisible) return;
+            GUILayout.BeginArea(new Rect(16, Screen.height - 250, 720, 230), GUI.skin.box);
             if (_debugVisible && _client is not null) GUILayout.TextArea(FormatDiagnostics(_client.Snapshot));
             if (_debugVisible && _lastError.Length > 0) GUILayout.Label("Error: " + _lastError);
             GUILayout.EndArea();
@@ -367,6 +380,11 @@ namespace LockstepArena.Demo
             RequireClient().StartBattle();
         }
 
+        public void ReturnToLobby()
+        {
+            RequireClient().ReturnToLobby();
+        }
+
         public bool TryConsumeCommandRejection(out string message)
         {
             if (_client is null || !_client.TryConsumeRejection(
@@ -400,6 +418,8 @@ namespace LockstepArena.Demo
             _predictionSeconds = 0d;
             _presenter?.Clear();
             _presenter = null;
+            if (_hud is not null) Destroy(_hud.gameObject);
+            _hud = null;
             HostedLanAddress = string.Empty;
             UserFacingError = string.Empty;
             _lastError = string.Empty;
