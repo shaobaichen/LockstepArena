@@ -149,6 +149,82 @@ namespace LockstepArena.Demo.Editor.Tests
         }
 
         [Test]
+        public void SimultaneousHitAndExpiryDoNotTurnBothRemovalsIntoPlayerImpacts()
+        {
+            var root = new GameObject("Mixed Projectile Removal Test");
+            var sceneRoot = new GameObject("Mixed Removal Scene Bindings");
+            BattlePresentationCatalog catalog = UnityEngine.Object.Instantiate(BattlePresentationCatalog.LoadRequired());
+            var originalParticles = new HashSet<ParticleSystem>(UnityEngine.Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None));
+            try
+            {
+                BattleScenePresentation scene = sceneRoot.AddComponent<BattleScenePresentation>();
+                scene.ArenaRoot = sceneRoot;
+                scene.GameplayCamera = sceneRoot.AddComponent<Camera>();
+                scene.AmbientSource = sceneRoot.AddComponent<AudioSource>();
+                scene.UiSource = sceneRoot.AddComponent<AudioSource>();
+                BattlePresenter presenter = root.AddComponent<BattlePresenter>();
+                presenter.Configure(BattleDefinition.CreateDefault());
+                // Silence only audio on a disposable catalog copy; test the real visual feedback.
+                catalog.ShootSound = catalog.PlayerHitSound = catalog.EnvironmentHitSound = catalog.DeathSound = null;
+                typeof(BattlePresenter).GetField("_catalog", System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!.SetValue(presenter, catalog);
+
+                BattleState before = CreateState(10, BattlePhase.Playing, 0, 1700, RoundResult.None, null,
+                    new PlayerState(-3500, 0, 0, 100, 0, 0), new PlayerState(3500, 0, 32768, 100, 0, 0),
+                    new ProjectileState(7, new PlayerId(11), 3200, 0, 1000, 0, 20),
+                    new ProjectileState(8, new PlayerId(11), -3500, 1000, 1000, 0, 1));
+                presenter.Present(before, new PlayerSlot(0));
+                var previousParticles = new HashSet<ParticleSystem>(UnityEngine.Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None));
+
+                var simulation = new BattleSimulation(before);
+                simulation.Step(FrameData.Create(before.Roster, before.Tick, new[]
+                {
+                    new InputFrame(before.Tick, new PlayerSlot(0), 0, 0, 0),
+                    new InputFrame(before.Tick, new PlayerSlot(1), 0, 0, 32768),
+                }));
+                Assert.That(simulation.State.ProjectileCount, Is.Zero);
+                Assert.That(simulation.State.GetPlayerState(new PlayerSlot(1)).HitPoints, Is.EqualTo(75));
+                presenter.Present(simulation.State, new PlayerSlot(0));
+
+                ParticleSystem[] impacts = UnityEngine.Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None)
+                    .Where(particle => !previousParticles.Contains(particle)).ToArray();
+                Assert.That(impacts, Has.Length.EqualTo(3), "One HP hit feedback plus two unattributed removals.");
+                Color neutral = new Color(1f, 0.72f, 0.25f);
+                Assert.That(impacts.Count(particle => particle.main.startColor.color == neutral), Is.EqualTo(2),
+                    "Neither removed projectile has authoritative per-ID attribution in BattleState.");
+                Assert.That(impacts.Count(particle => particle.main.startColor.color == Color.white), Is.Zero,
+                    "A player HP decrease must not classify every simultaneous removal as a player hit.");
+            }
+            finally
+            {
+                foreach (ParticleSystem particle in UnityEngine.Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None))
+                    if (!originalParticles.Contains(particle)) UnityEngine.Object.DestroyImmediate(particle.gameObject);
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(sceneRoot);
+                UnityEngine.Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void FormalBattleHudHasNoPersistentControlsRow()
+        {
+            var root = new GameObject("Formal HUD Controls Test");
+            try
+            {
+                root.AddComponent<BattleHudView>().Configure(BattlePresentationCatalog.LoadRequired());
+                Assert.That(root.transform.Find("Battle HUD Canvas/Controls"), Is.Null);
+                Assert.That(root.transform.Find("Battle HUD Canvas/Round"), Is.Not.Null);
+                Assert.That(root.transform.Find("Battle HUD Canvas/Timer"), Is.Not.Null);
+                Assert.That(root.transform.Find("Battle HUD Canvas/Announcement"), Is.Not.Null);
+                Assert.That(root.transform.Find("Battle HUD Canvas/Settlement"), Is.Not.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void CatalogContainsTheApprovedMinimalAssetSet()
         {
             BattlePresentationCatalog catalog = BattlePresentationCatalog.LoadRequired();

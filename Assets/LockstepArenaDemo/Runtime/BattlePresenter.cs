@@ -85,9 +85,9 @@ namespace LockstepArena.Demo
             foreach (ulong id in events.RemovedProjectileIds)
             {
                 if (!_lastProjectilePositions.TryGetValue(id, out Vector3 position)) continue;
-                bool hitPlayer = events.DamagedSlots.Length > 0;
-                SpawnBurst(position, hitPlayer ? Color.white : new Color(1f, 0.72f, 0.25f), hitPlayer ? (short)10 : (short)7, 0.8f);
-                PlayWorld(hitPlayer ? _catalog!.PlayerHitSound : _catalog!.EnvironmentHitSound, position, 0.35f);
+                // BattleState has no per-projectile removal attribution. HP-based hit feedback is handled above.
+                SpawnBurst(position, new Color(1f, 0.72f, 0.25f), 7, 0.8f);
+                PlayWorld(_catalog!.EnvironmentHitSound, position, 0.35f);
             }
 
             SynchronizeProjectiles(state);

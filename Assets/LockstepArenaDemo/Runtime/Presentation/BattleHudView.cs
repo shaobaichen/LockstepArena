@@ -116,11 +116,6 @@ namespace LockstepArena.Demo
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(540, 190), catalog.Font);
             _announcement.fontStyle = FontStyles.Bold;
 
-            TMP_Text controls = CreateText(root, "Controls", "WASD MOVE   •   MOUSE AIM   •   HOLD LMB FIRE   •   F1 DEBUG", 16,
-                TextAlignmentOptions.Center, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 22),
-                new Vector2(760, 28), catalog.Font);
-            controls.color = new Color(0.72f, 0.82f, 0.9f, 0.85f);
-
             _settlement = CreatePanel(root, "Settlement", catalog.PanelSprite, new Color(0.025f, 0.055f, 0.09f, 0.94f),
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460, 250));
             _settlementText = CreateText(_settlement.GetComponent<RectTransform>(), "Result", "YOU WIN", 40,

@@ -27,9 +27,13 @@ The v3-B runtime stays intentionally small:
 
 ## Transient feedback
 
-A bounded identity cache records observed projectile IDs and HP-damage identities. New projectile IDs cause one muzzle flash and shoot sound. Removed IDs cause one small environment impact unless the same observation also contains player damage, in which case a player impact is used. HP decreases cause one hit flash/hit sound. Re-observing the same deterministic tick/state after rollback does not replay those cues.
+A bounded identity cache records observed projectile IDs and HP-damage identities. New projectile IDs cause one muzzle flash and shoot sound. BattleState does not expose a removed projectile's hit target or removal reason, so removed IDs receive only neutral/environment feedback at their last observed position. HP decreases independently cause one player hit flash/hit sound; they never classify unrelated projectile removals. Re-observing the same deterministic tick/state after rollback does not replay those cues.
 
 The tracker never changes deterministic state and does not reconstruct gameplay collision.
+
+### Independent review correction (2026-09-27)
+
+Removed the persistent controls/help row from the formal Battle HUD; F1 diagnostics remain separate and unchanged. Added real-simulation mixed hit/expiry feedback and HUD absence regressions, both verified RED before the fix and GREEN afterward. Fresh complete Unity EditMode: 58/58 passed (00:49 local); DemoFlow: 59/59, Client Prediction: 37/37, Live Prediction: 51/51. Fresh Windows package build succeeded at 00:50 local. No simulation, collision, prediction, rollback, replay, or v3-C changes.
 
 ## HUD and phase mapping
 
