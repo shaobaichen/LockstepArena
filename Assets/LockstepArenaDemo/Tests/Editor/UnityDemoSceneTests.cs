@@ -48,6 +48,44 @@ namespace LockstepArena.Demo.Editor.Tests
         }
 
         [Test]
+        public void BattleSceneContainsAnInputSystemEventSystemForSettlementActions()
+        {
+            const string battlePath = "Assets/LockstepArenaDemo/Scenes/BattleScene.unity";
+            var scene = EditorSceneManager.OpenScene(battlePath, OpenSceneMode.Single);
+            GameObject[] objects = scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Transform>(true))
+                .Select(transform => transform.gameObject)
+                .ToArray();
+
+            Assert.That(objects.Count(gameObject => gameObject.GetComponents<MonoBehaviour>().Any(component =>
+                component.GetType().FullName == "UnityEngine.InputSystem.UI.InputSystemUIInputModule")), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BattleSceneContainsEditableArenaCameraLightingAndNoGameplayPhysics()
+        {
+            const string battlePath = "Assets/LockstepArenaDemo/Scenes/BattleScene.unity";
+            var scene = EditorSceneManager.OpenScene(battlePath, OpenSceneMode.Single);
+            GameObject[] objects = scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Transform>(true))
+                .Select(transform => transform.gameObject)
+                .ToArray();
+
+            Assert.That(objects.Count(gameObject => gameObject.name == "Battle Presentation" &&
+                gameObject.GetComponents<MonoBehaviour>().Any(component =>
+                    component.GetType().FullName == "LockstepArena.Demo.BattleScenePresentation")), Is.EqualTo(1));
+            Assert.That(objects.Count(gameObject => gameObject.name == "Arena Environment"), Is.EqualTo(1));
+            Assert.That(objects.Count(gameObject => gameObject.name == "Gameplay Camera" &&
+                gameObject.GetComponent<Camera>() != null), Is.EqualTo(1));
+            Assert.That(objects.Count(gameObject => gameObject.name == "Cool Arena Key Light" &&
+                gameObject.GetComponent<Light>() != null), Is.EqualTo(1));
+            Assert.That(objects.Where(gameObject => gameObject.name == "Arena Environment")
+                .SelectMany(gameObject => gameObject.GetComponentsInChildren<Collider>(true)), Is.Empty);
+            Assert.That(objects.Where(gameObject => gameObject.name == "Arena Environment")
+                .SelectMany(gameObject => gameObject.GetComponentsInChildren<Rigidbody>(true)), Is.Empty);
+        }
+
+        [Test]
         public void GameShellCanvasPrefabContainsEveryApprovedScreenRoot()
         {
             const string prefabPath = "Assets/LockstepArenaDemo/Prefabs/UI/GameShellCanvas.prefab";

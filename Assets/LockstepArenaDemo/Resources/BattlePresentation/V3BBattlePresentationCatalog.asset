@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c2ebfd3f00cc9d74b8a671cb234b057e, type: 3}
   m_Name: V3BBattlePresentationCatalog
   m_EditorClassIdentifier: LockstepArena.Demo::LockstepArena.Demo.BattlePresentationCatalog
-  RobotPrefab: {fileID: 919132149155446097, guid: 909e22769ac7d244b8abe37778f9f6b4, type: 3}
+  RobotPrefab: {fileID: 5524387210104004850, guid: 463d7d9948f95224eb6eb39970f64b00, type: 3}
   WeaponPrefab: {fileID: 919132149155446097, guid: 2edfae2e1a4e9cf469fbd1f0d0b11ced, type: 3}
   PlatformPrefab: {fileID: 919132149155446097, guid: a35226873af0a044fbd24a49da345acf, type: 3}
   DoorFramePrefab: {fileID: 919132149155446097, guid: 8017547c945adef49b94f4a9690182ff, type: 3}

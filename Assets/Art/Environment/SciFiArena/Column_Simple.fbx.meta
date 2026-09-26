@@ -3,9 +3,19 @@ guid: 0e0aa77fe1975254d95e1d545a7fbaa6
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MI_Trim_01
+    second: {fileID: 2100000, guid: 9e97de0a2550a654a95a604d236fdbbc, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MI_Trim_02
+    second: {fileID: 2100000, guid: 9e97de0a2550a654a95a604d236fdbbc, type: 2}
   materials:
-    materialImportMode: 2
+    materialImportMode: 1
     materialName: 0
     materialSearch: 1
     materialLocation: 1
@@ -79,7 +89,7 @@ ModelImporter:
     blendShapeNormalImportMode: 1
     normalSmoothingSource: 0
   referencedClips: []
-  importAnimation: 1
+  importAnimation: 0
   humanDescription:
     serializedVersion: 3
     human: []

@@ -20,8 +20,8 @@ namespace LockstepArena.Demo
         private TMP_Text? _round;
         private TMP_Text? _timer;
         private TMP_Text? _announcement;
-        private Image? _p1Bar;
-        private Image? _p2Bar;
+        private RectTransform? _p1Bar;
+        private RectTransform? _p2Bar;
         private GameObject? _settlement;
         private TMP_Text? _settlementText;
         private Button? _returnButton;
@@ -66,8 +66,10 @@ namespace LockstepArena.Demo
             BattlePresentationSnapshot model = BattlePresentationReadModel.Create(state);
             _p1Hp!.text = $"P1   {model.Player1HitPoints} / {state.Definition!.Gameplay.MaxHitPoints}";
             _p2Hp!.text = $"P2   {model.Player2HitPoints} / {state.Definition.Gameplay.MaxHitPoints}";
-            _p1Bar!.fillAmount = model.Player1HitPoints / (float)state.Definition.Gameplay.MaxHitPoints;
-            _p2Bar!.fillAmount = model.Player2HitPoints / (float)state.Definition.Gameplay.MaxHitPoints;
+            float firstHealth = model.Player1HitPoints / (float)state.Definition.Gameplay.MaxHitPoints;
+            float secondHealth = model.Player2HitPoints / (float)state.Definition.Gameplay.MaxHitPoints;
+            _p1Bar!.anchorMax = new Vector2(firstHealth, 1f);
+            _p2Bar!.anchorMin = new Vector2(1f - secondHealth, 0f);
             _p1Wins!.text = Marks(model.Player1RoundWins);
             _p2Wins!.text = Marks(model.Player2RoundWins);
             _round!.text = $"ROUND {model.RoundNumber}";
@@ -131,7 +133,7 @@ namespace LockstepArena.Demo
             _settlement.SetActive(false);
         }
 
-        private static Image CreatePlayerPanel(
+        private static RectTransform CreatePlayerPanel(
             RectTransform root,
             BattlePresentationCatalog catalog,
             bool left,
@@ -167,10 +169,7 @@ namespace LockstepArena.Demo
             Image image = fill.GetComponent<Image>();
             image.color = left ? BattlePresentationReadModel.GetTeamColor(new PlayerSlot(0)) :
                 BattlePresentationReadModel.GetTeamColor(new PlayerSlot(1));
-            image.type = Image.Type.Filled;
-            image.fillMethod = Image.FillMethod.Horizontal;
-            image.fillOrigin = left ? 0 : 1;
-            return image;
+            return fillRect;
         }
 
         private static GameObject CreatePanel(RectTransform parent, string name, Sprite? sprite, Color color,

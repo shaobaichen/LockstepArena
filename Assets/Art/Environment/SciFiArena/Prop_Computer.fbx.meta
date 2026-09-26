@@ -3,9 +3,24 @@ guid: 725adfa92f430db45a44bd5c50a43abf
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MI_Trim_01
+    second: {fileID: 2100000, guid: 764bbdd500e87af45bc0d0dd4d8d33d5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_Black
+    second: {fileID: 2100000, guid: 764bbdd500e87af45bc0d0dd4d8d33d5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_Decal_Screen
+    second: {fileID: 2100000, guid: 764bbdd500e87af45bc0d0dd4d8d33d5, type: 2}
   materials:
-    materialImportMode: 2
+    materialImportMode: 1
     materialName: 0
     materialSearch: 1
     materialLocation: 1
@@ -79,7 +94,7 @@ ModelImporter:
     blendShapeNormalImportMode: 1
     normalSmoothingSource: 0
   referencedClips: []
-  importAnimation: 1
+  importAnimation: 0
   humanDescription:
     serializedVersion: 3
     human: []

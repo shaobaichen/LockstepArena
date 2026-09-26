@@ -1,6 +1,6 @@
 # Lockstep Arena v3-A art sources
 
-Only the assets listed below were copied into the repository. The complete source packs remain outside the repository at `E:\unityproject\LockstepArena_ArtSource`.
+Only the selected assets listed below belong to the committed repository. Complete source packs remain external at `E:\unityproject\LockstepArena_ArtSource`; additional user-imported local candidates are deliberately not staged.
 
 ## Kenney UI Pack: Sci-fi 2.0
 
@@ -107,3 +107,24 @@ The runtime uses restrained Unity Particle Systems. No particle collision or VFX
   - `Assets/Art/Audio/Kenney/spaceEngineLow_000.ogg`
 
 All complete source packs remain outside the repository at `E:\unityproject\LockstepArena_ArtSource\V3B`.
+
+## v3-B user-authored combat arena
+
+The authored `BattleScene.unity` uses a minimal subset of the Quaternius Modular SciFi MegaKit Standard pack. Its local `License_Standard.txt` explicitly identifies these models as CC0 1.0 Universal; that license accompanies the committed subset.
+
+Base path: `Assets/Art/04_Arena/Quaternius_ModularSciFiMegaKit/Modular SciFi MegaKit[Standard]`.
+
+- `FBX/Columns/Column_Hollow.fbx`
+- `FBX/Columns/Column_Pipes.fbx`
+- `FBX/Columns/Column_Simple.fbx`
+- `FBX/Decals/Decal_Line_90.fbx`
+- `FBX/Decals/Decal_Line_Bend1_R.fbx`
+- `FBX/Decals/Decal_Logo.fbx`
+- `FBX/Decals/Decal_Logo_Letters.fbx`
+- `FBX/Platforms/Door_Frame_A.fbx`
+- `FBX/Props/Prop_AccessPoint.fbx`
+- `FBX/Walls/WallWindow_Corner_Square_Inner.fbx`
+- FBX-referenced textures: `Textures/T_Decals.png`, `T_PaddedWall_BaseColor.png`, `T_Trim_01_BaseColor_Red.png`, `T_Trim_01_Normal.png`, and `T_Trim_02_BaseColor_Red.png`.
+- Matching asset/folder `.meta` files and `License_Standard.txt` are included.
+
+The remaining FBX variants, OBJ/glTF copies, preview files, unused textures, and the locally imported Sci-Fi Essentials pack are not committed. No source-pack gameplay scripts are included. Embedded model materials/texture references are retained for this authored scene; these are not gameplay authority.

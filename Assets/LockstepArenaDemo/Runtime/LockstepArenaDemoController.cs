@@ -38,6 +38,7 @@ namespace LockstepArena.Demo
         private bool _sceneReadySent;
         private bool _debugVisible;
         private double _predictionSeconds;
+        private string _aimDiagnostic = "Aim: no gameplay input sampled";
 
         public DemoClientSnapshot? ClientSnapshot => _client?.Snapshot;
         public ShellConnectionStage ShellStage { get; private set; } = ShellConnectionStage.Idle;
@@ -88,7 +89,9 @@ namespace LockstepArena.Demo
                 if (IsBattlePhase(_client.Phase) && _client.PredictedBattleState is not null)
                 {
                     BattleState state = _client.PredictedBattleState;
-                    EnsurePresenter().Present(state, _client.LocalPlayerSlot);
+                    ushort? visualAim = _client.Phase == DemoClientPhase.InBattle &&
+                        _client.LocalPlayerSlot.HasValue ? GetCurrentAim() : null;
+                    EnsurePresenter().Present(state, _client.LocalPlayerSlot, visualAim);
                     EnsureHud().Present(state, _client.Phase, _client.Snapshot, ReturnToLobby);
                 }
             }
@@ -209,28 +212,45 @@ namespace LockstepArena.Demo
         {
             BattleState? state = _client?.PredictedBattleState;
             PlayerSlot? localSlot = _client?.LocalPlayerSlot;
-            if (state is null || !localSlot.HasValue) return 0;
+            if (state is null || !localSlot.HasValue)
+            {
+                _aimDiagnostic = $"Aim unavailable: state={state is not null}, slot={localSlot}";
+                return 0;
+            }
             PlayerState player = state.GetPlayerState(localSlot.Value);
             Camera? camera = EnsurePresenter().GameplayCamera;
-            if (camera is null) return player.Aim;
+            if (camera == null)
+            {
+                _aimDiagnostic = "Aim unavailable: gameplay camera missing";
+                return player.Aim;
+            }
             Vector2 screenPosition = Mouse.current?.position.ReadValue() ??
                 new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
             Ray ray = camera.ScreenPointToRay(screenPosition);
             var plane = new Plane(Vector3.up, Vector3.zero);
-            if (!plane.Raycast(ray, out float distance)) return player.Aim;
+            if (!plane.Raycast(ray, out float distance))
+            {
+                _aimDiagnostic = $"Aim projection failed: mouse={screenPosition}, ray={ray}";
+                return player.Aim;
+            }
             Vector3 point = ray.GetPoint(distance);
-            return BattleSimulation.GetAimToward(
+            ushort aim = BattleSimulation.GetAimToward(
                 new ArenaPoint(player.PositionX, player.PositionZ),
                 new ArenaPoint(
                     Mathf.RoundToInt(point.x * BattlePresenter.WorldUnitsPerSimulationUnit),
                     Mathf.RoundToInt(point.z * BattlePresenter.WorldUnitsPerSimulationUnit)));
+            _aimDiagnostic = $"Aim slot={localSlot.Value.Value} mouse={screenPosition} world={point:F2} " +
+                $"input={aim} predicted={player.Aim} focused={Application.isFocused}";
+            return aim;
         }
 
         private BattlePresenter EnsurePresenter()
         {
-            if (_presenter is not null) return _presenter;
-            _presenter = GetComponent<BattlePresenter>();
-            if (_presenter is null) _presenter = gameObject.AddComponent<BattlePresenter>();
+            if (_presenter == null)
+            {
+                _presenter = GetComponent<BattlePresenter>();
+                if (_presenter == null) _presenter = gameObject.AddComponent<BattlePresenter>();
+            }
             _presenter.Configure(_definition);
             return _presenter;
         }
@@ -251,6 +271,7 @@ namespace LockstepArena.Demo
             if (!_debugVisible) return;
             GUILayout.BeginArea(new Rect(16, Screen.height - 250, 720, 230), GUI.skin.box);
             if (_debugVisible && _client is not null) GUILayout.TextArea(FormatDiagnostics(_client.Snapshot));
+            if (_debugVisible) GUILayout.Label(_aimDiagnostic);
             if (_debugVisible && _lastError.Length > 0) GUILayout.Label("Error: " + _lastError);
             GUILayout.EndArea();
         }
