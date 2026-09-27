@@ -129,6 +129,8 @@ namespace LockstepArena.Demo
                 EnsurePresenter().Present(state, _client.LocalPlayerSlot, visualAim);
                 EnsureHud().Present(state, _client.Phase, _client.Snapshot, ReturnToLobby, CanWatchReplay, WatchReplay);
             }
+            else return;
+            _lastError = string.Empty;
         }
 
         public void WatchReplay()

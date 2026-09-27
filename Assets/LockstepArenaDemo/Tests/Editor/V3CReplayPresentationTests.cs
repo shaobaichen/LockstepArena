@@ -15,6 +15,21 @@ namespace LockstepArena.Demo.Editor.Tests
 {
     public sealed class V3CReplayPresentationTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SuccessfulBattlePresentationClearsRecoveredDiagnosticError(bool replay)
+        {
+            using var fixture = new ReplayFixture();
+            if (replay) fixture.Controller.WatchReplay();
+            fixture.SilencePresenter();
+            Set(fixture.Controller, "_lastError", "The authored BattleScene presentation is missing.");
+            InvokeRequired(fixture.Controller, "AdvanceBattlePresentation", 0d);
+            string error = (string)typeof(LockstepArenaDemoController).GetField("_lastError",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(fixture.Controller)!;
+            Assert.That(error, Is.Empty,
+                "A recovered scene binding error must not remain as a current error after successful live/replay presentation.");
+        }
+
         [Test]
         public void WatchReplayRequiresVerifiedSettlementAndSnapshot()
         {
