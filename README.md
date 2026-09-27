@@ -1,73 +1,127 @@
 # Lockstep Arena
 
-Lockstep Arena is a small deterministic lockstep gameplay demo. Two Unity clients enter a nickname session and room, freeze the battle roster, then play a server-authoritative projectile arena with client prediction, Dirty detection, rollback/re-simulation, authoritative Replay, and `StateDigest` verification.
+Deterministic 1v1 Multiplayer Arena
 
-## Prerequisites
+Unity 6 · C# · Server Authority · Input Lockstep · Client Prediction · Rollback / Re-simulation · Authoritative Replay · StateDigest
 
-- Windows with the .NET 8 SDK.
-- Unity `6000.3.10f1` installed at `E:\unityhub\unity6.3\Editor\Unity.exe` for the Unity demo and EditMode verification.
-- TCP ports `46000` (CONTROL) and `46001` (BATTLE) available.
+## What is Lockstep Arena?
 
-## Build and run
+A playable LAN arena and a small, inspectable multiplayer implementation. Two players create/join a room, ready up, and fight a first-to-two-wins match. A verified match can be replayed from authoritative inputs through the same deterministic simulation—not from recorded video or transforms.
 
-```powershell
-dotnet build Server/LockstepArena.Server.DemoHost/LockstepArena.Server.DemoHost.csproj -c Release
-.\Server\LockstepArena.Server.DemoHost\bin\Release\net8.0\LockstepArena.Server.DemoHost.exe --bind 0.0.0.0 --control-port 46000 --battle-port 46001
+## Core technical features
+
+| Feature | Implementation |
+| --- | --- |
+| Deterministic simulation | Shared C# simulation with integer state and explicit complete input frames; no Unity Physics authority. |
+| Server-authoritative input lockstep | CONTROL TCP handles rooms; BATTLE TCP collects inputs and publishes complete authoritative frames. |
+| Client prediction | Local input advances a bounded prediction timeline for responsive presentation. |
+| Dirty detection and rollback | Compare predicted and authoritative inputs, restore state before a dirty frame, and re-simulate retained frames. |
+| StateDigest | Canonical state hashing supports same-tick comparison and final settlement/replay verification. |
+| Authoritative replay | Retain initial state plus authoritative frames; replay offline with pause, resume, repeat, and return to result. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Unity Client A] -->|CONTROL TCP| H[DemoHost]
+    B[Unity Client B] -->|CONTROL TCP| H
+    A -->|BATTLE TCP inputs| S[Server Authority]
+    B -->|BATTLE TCP inputs| S
+    H --> S
+    S --> F[Authoritative FrameData]
+    F --> P[Client Prediction / Dirty Detection]
+    P --> R[Rollback / Re-simulation]
+    R --> State[BattleState]
+    State --> View[Unity Presentation]
 ```
 
-The server prints its bind address and ports and stops when `Q` is pressed in its terminal. In Unity, open `Assets/LockstepArenaDemo/Scenes/LobbyScene.unity`, ensure both `LobbyScene` and `BattleScene` are enabled in Build Settings, and build a Windows x86-64 Player. Copy the entire Player output directory when moving it to another PC.
+The server owns the input timeline and settlement. Shared simulation owns combat and collision. Unity owns input sampling, rendering, audio, and UI. See [Architecture](Docs/ARCHITECTURE.md) for the tick and replay flows.
 
-## Local two-client demo
+## Client prediction and rollback
 
-Start two copies of the Windows Player. Use server address `127.0.0.1`, unique nicknames such as `Alpha` and `Bravo`, then select `Connect` and `Enter` on both clients.
+Local prediction runs at 30 simulation ticks per second, independently of per-render network pumping. Prediction is bounded to eight ticks, matching the server's future-input window. Remote prediction uses the latest reconciled input, or neutral input before one is available.
 
-1. Alpha creates a room with capacity `2`.
-2. Bravo selects `List`, enters the room id, and selects `Join`.
-3. Both clients select `Ready`; the host selects `Start`.
-4. After `3/2/1`, use `WASD` to move, the mouse to aim, and hold the left mouse button to fire.
-5. Finish the best-of-three match, verify settlement, and select `Return To Lobby`.
-6. Without restarting the server or clients, create/join another room and start a second battle to verify clean lifecycle reuse.
+Reconciliation compares complete frame inputs, not just positions. A dirty frame restores its preceding state and re-simulates the remaining retained predictions. F1 exposes authoritative/predicted ticks, pending frames, dirty-frame counts, and digests. Digest equality is meaningful only at the same tick.
 
-Press `F1` to show the Debug panel. It exposes connection phase, room/roster state, server/authority/predicted Tick, pending counts, Replay, Dirty count, digests, and settlement verification.
+## Authoritative replay
 
-## LAN demo
+Verified settlement retains an immutable snapshot of the initial state and authoritative frames before releasing the battle runtime. **Watch Replay** creates a fresh offline simulation and reuses the battle presenter. Gameplay input is suppressed; the settlement CONTROL connection remains available.
 
-Run the server and Client A on PC A. Run `ipconfig` on PC A and note the active adapter's IPv4 address. Client A may use `127.0.0.1`; Client B on the same LAN must use PC A's IPv4 address. If Windows Firewall prompts for the server or Player, allow access on **Private networks**. Do not expose this Debug demo directly to the public Internet.
+Space pauses/resumes. Escape returns to the same result. Completed replay remains visible until **Back To Result** is selected. Watching again resets projectile identities, HP feedback, announcements, and owned transient effects. Returning to lobby clears replay mode and the retained snapshot.
 
-## Diagnostics
+Details: [Replay and Rollback](Docs/REPLAY_AND_ROLLBACK.md).
 
-`LockstepArenaDemoController` renders the current immutable client snapshot. `LatestDirty` reports the most recently reconciled authoritative frame; `CumulativeDirty` counts rollback-triggering reconciliations. `SettlementVerified=True` means final per-slot state, Tick, digest, prediction convergence, and authoritative Replay were checked before the battle socket was released.
+## Gameplay flow
 
-## Verification
+Main Menu → Create/Join LAN → Lobby → Room → Ready → Host Start → Battle → Verified Result → Watch Replay or Return To Lobby.
 
-Run every formal .NET test project under `Tests` and the Unity EditMode suite. For a focused current business-flow check:
+- WASD moves, mouse aims, held left mouse fires; F1 toggles diagnostics.
+- Players start with 100 HP; a hit deals 25 damage.
+- Each round has a three-second countdown and a 60-second fight timer.
+- First player to two round wins takes the match; drawn rounds do not count as wins.
+
+## Windows demo
+
+Copy the entire `LockstepArena-Windows-x64` folder, not just the executable. The packaged server is self-contained; players do not need Unity, Visual Studio, or the .NET SDK.
+
+1. Host launches `LockstepArena.exe`, chooses **Create LAN**, enters a nickname and room name, and creates a room. The application starts its bundled DemoHost.
+2. Guest launches another copy, chooses **Join LAN**, enters a different nickname and the host's IPv4 address, selects the room, and joins.
+3. Both players select **Ready**; the host selects **Start**.
+
+For two players on one PC, use `127.0.0.1`. For two PCs, use the host's active LAN IPv4 address. Allow Private Network access if Windows Firewall asks. TCP ports 46000 (CONTROL) and 46001 (BATTLE) must be available on the host. This is a private-LAN demo, not a public Internet service.
+
+See [Quick Start](Docs/QUICK_START.md) for troubleshooting.
+
+## Build from source
+
+- Unity `6000.3.10f1` (Unity 6.3 LTS), with Windows build support.
+- .NET SDK `8.0.419`, as pinned in `global.json`.
+
+Open the project in Unity and open `Assets/LockstepArenaDemo/Scenes/LobbyScene.unity`. Close all running game clients, then select **Lockstep Arena → Build v3-A Windows Player**. The existing menu name is retained; it builds the current saved Lobby/Battle scenes and publishes the current self-contained server.
+
+The complete output is `.artifacts/V3APlayer/`. Launch `LockstepArena.exe` from that folder. Do not regenerate the battle presentation assets to build: the saved scene and robot prefab contain authored adjustments.
+
+## Tests
 
 ```powershell
+dotnet run --project Tests/LockstepArena.Simulation.Tests/LockstepArena.Simulation.Tests.csproj -c Release
 dotnet run --project Tests/LockstepArena.DemoFlow.Tests/LockstepArena.DemoFlow.Tests.csproj -c Release
+dotnet run --project Tests/LockstepArena.Client.Prediction.Tests/LockstepArena.Client.Prediction.Tests.csproj -c Release
+dotnet run --project Tests/LockstepArena.LivePrediction.Tests/LockstepArena.LivePrediction.Tests.csproj -c Release
 ```
 
-The complete historical verification matrix is in [the Gate 14 architecture](Docs/Architecture/GATE14_MINIMAL_TCP_LOBBY_TO_BATTLE_DEMO.md).
+Run these serially. In Unity, open Test Runner, clear its search field, choose **EditMode → Run All**. Test contracts and manual acceptance are documented in [Testing](Docs/TESTING.md).
 
-## Architecture and Gate history
+## Project structure
 
-- Gate 0: repository and scope baseline.
-- Gate 1: deterministic shared simulation.
-- Gate 2: one physical simulation source consumed by Unity and .NET.
-- Gate 3: variable roster and strict complete frames.
-- Gate 4: continuous authoritative multi-Tick publication.
-- Gate 5: explicit Protobuf/Domain boundary.
-- Gate 6: protocol-aware server authority composition.
-- Gate 7: length-prefixed byte-stream framing.
-- Gate 8: finite real TCP loopback proof.
-- Gate 9: fixed InputDelay and logical authority scheduling.
-- Gate 10: synchronous Stopwatch pacing.
-- Gate 11: minimal live TCP battle runtime.
-- Gate 12: bounded client prediction, Dirty detection, rollback and re-simulation.
-- Gate 13: two-client shared live prediction and authoritative Replay.
-- Gate 14: nickname/room/ready/start/settlement Debug demo and v1 closure.
+| Directory | Purpose |
+| --- | --- |
+| `Packages/com.locksteparena.*` | Shared simulation, protocol, framing, prediction, live TCP client, and demo client flow. |
+| `Server/` | DemoHost and its authority/transport dependencies. |
+| `Assets/LockstepArenaDemo/` | Saved scenes, presentation prefabs, shell, HUD, replay player, and Unity tests. |
+| `Assets/Art/` | Selected presentation assets. |
+| `Tests/` | Runnable .NET regression suites. |
+| `Docs/` | Architecture, replay/rollback, testing, quick start, and real gameplay media. |
 
-See [Lockstep Arena v1 Architecture](Docs/Architecture/LOCKSTEP_ARENA_V1_ARCHITECTURE.md) for the ownership and data-flow diagram.
+## Known limitations
 
-## Current gameplay and limitations
+- One fixed 1v1 arena. Deterministic rectangular obstacles are defined in shared simulation; scene meshes and Unity Colliders do not author gameplay collision. Visual alignment is manual.
+- TCP, fixed input delay, and strict complete frames. A missing player's input stalls authority; no missing-input substitution or reconnect.
+- No accounts, Internet matchmaking, TLS, or public-service hardening.
+- Slight remote visual jitter remains; no interpolation layer.
+- Replay is in memory only, with no seek, speed control, or disk format. Below 30 render FPS, playback slows rather than skipping presentation frames.
+- StateDigest is a consistency check, not a cryptographic anti-cheat mechanism.
+- Projectile removal lacks authoritative per-ID hit attribution; uncertain removals use neutral/environment feedback rather than claiming a player impact. HP decrease feedback is separate.
 
-The current gameplay is a fixed-obstacle projectile arena with hit points, round countdowns, draws, and best-of-three settlement. v1 is a TCP Debug demonstration, not a public-network service. It intentionally has no account database, password/registration, chat, matchmaking service, TLS, KCP/UDP, reconnect, heartbeat, adaptive input delay, missing-input substitution, or rendering interpolation. Slight remote visual jitter is accepted in v1. The current primitive visuals are placeholders; a later v3 Presentation / Art Pass can replace the presentation layer without changing deterministic gameplay.
+## Third-party assets and licenses
+
+Robot: [Styloo](https://styloo.itch.io/robot-character). Arena/props/weapons: [Quaternius](https://quaternius.com/). UI, particles, and audio: [Kenney](https://kenney.nl/). The selected art packs use CC0. Embedded Liberation Sans uses SIL OFL 1.1; Google.Protobuf uses BSD-3-Clause. Installed Windows fonts are used at runtime, not redistributed.
+
+See [Third-party licenses](THIRD_PARTY_LICENSES.txt) and the notices included with the Windows package. Asset licenses do not grant a license to unrelated project code.
+
+## Engineering docs
+
+- [Architecture](Docs/ARCHITECTURE.md)
+- [Replay and Rollback](Docs/REPLAY_AND_ROLLBACK.md)
+- [Testing](Docs/TESTING.md)
+- [Quick Start](Docs/QUICK_START.md)
