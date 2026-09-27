@@ -26,6 +26,12 @@ namespace LockstepArena.Demo
         private TMP_Text? _settlementText;
         private Button? _returnButton;
         private Action? _returnAction;
+        private Button? _watchButton;
+        private Action? _watchAction;
+        private GameObject? _replay;
+        private TMP_Text? _replayText;
+        private Button? _backButton;
+        private Action? _backAction;
         private bool _built;
 
         public BattleAnnouncementKind VisibleAnnouncement { get; private set; }
@@ -41,9 +47,12 @@ namespace LockstepArena.Demo
             BattleState state,
             DemoClientPhase clientPhase,
             DemoClientSnapshot snapshot,
-            Action returnToLobby)
+            Action returnToLobby,
+            bool canWatchReplay = false,
+            Action? watchReplay = null)
         {
             ApplyBattleState(state);
+            _replay!.SetActive(false);
             bool settled = clientPhase == DemoClientPhase.Settlement;
             _settlement!.SetActive(settled);
             if (settled)
@@ -52,13 +61,27 @@ namespace LockstepArena.Demo
                     snapshot.WinnerPlayerId == snapshot.SessionId ? "YOU WIN" : "YOU LOSE";
                 _settlementText!.text = $"{localResult}\nFINAL {snapshot.Slot0RoundWins} - {snapshot.Slot1RoundWins}";
                 _returnAction = returnToLobby;
+                _watchAction = watchReplay;
+                _watchButton!.interactable = snapshot.SettlementVerified && canWatchReplay;
             }
+        }
+
+        public void PresentReplay(BattleReplayPlayer player, Action backToResult)
+        {
+            ApplyBattleState(player.CurrentState);
+            _settlement!.SetActive(false);
+            _replay!.SetActive(true);
+            string status = player.IsComplete ? "REPLAY COMPLETE" : player.IsPaused ? "REPLAY PAUSED" : "REPLAY";
+            _replayText!.text = $"{status}   {player.CurrentFrame} / {player.TotalFrames}\nSPACE PAUSE / RESUME   |   ESC BACK TO RESULT";
+            _backButton!.gameObject.SetActive(player.IsComplete);
+            _backAction = backToResult;
         }
 
         public void PresentPreview(BattleState state)
         {
             ApplyBattleState(state);
             _settlement!.SetActive(false);
+            _replay!.SetActive(false);
         }
 
         private void ApplyBattleState(BattleState state)
@@ -117,7 +140,7 @@ namespace LockstepArena.Demo
             _announcement.fontStyle = FontStyles.Bold;
 
             _settlement = CreatePanel(root, "Settlement", catalog.PanelSprite, new Color(0.025f, 0.055f, 0.09f, 0.94f),
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460, 250));
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460, 300));
             _settlementText = CreateText(_settlement.GetComponent<RectTransform>(), "Result", "YOU WIN", 40,
                 TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -58),
                 new Vector2(400, 100), catalog.Font);
@@ -125,7 +148,23 @@ namespace LockstepArena.Demo
             _returnButton = CreateButton(_settlement.GetComponent<RectTransform>(), catalog, "RETURN TO LOBBY",
                 new Vector2(0, 42));
             _returnButton.onClick.AddListener(() => _returnAction?.Invoke());
+            _watchButton = CreateButton(_settlement.GetComponent<RectTransform>(), catalog, "WATCH REPLAY",
+                new Vector2(0, 100));
+            _watchButton.name = "Watch Replay Button";
+            _watchButton.interactable = false;
+            _watchButton.onClick.AddListener(() => _watchAction?.Invoke());
             _settlement.SetActive(false);
+
+            _replay = CreatePanel(root, "Replay Status", catalog.PanelSprite, new Color(0.025f, 0.055f, 0.09f, 0.94f),
+                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 76), new Vector2(620, 132));
+            _replayText = CreateText(_replay.GetComponent<RectTransform>(), "Replay Progress", "REPLAY", 18,
+                TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -34),
+                new Vector2(600, 60), catalog.Font);
+            _backButton = CreateButton(_replay.GetComponent<RectTransform>(), catalog, "BACK TO RESULT",
+                new Vector2(0, 30));
+            _backButton.name = "Back To Result Button";
+            _backButton.onClick.AddListener(() => _backAction?.Invoke());
+            _replay.SetActive(false);
         }
 
         private static RectTransform CreatePlayerPanel(

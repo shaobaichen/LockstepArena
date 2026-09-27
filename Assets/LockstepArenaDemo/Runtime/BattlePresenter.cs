@@ -21,6 +21,7 @@ namespace LockstepArena.Demo
         private AudioSource? _ambientSource;
         private AudioSource? _uiSource;
         private BattleAnnouncementKind _lastAnnouncement;
+        private GameObject? _transients;
 
         public Camera? GameplayCamera { get; private set; }
 
@@ -96,6 +97,15 @@ namespace LockstepArena.Demo
 
         public void Clear()
         {
+            if (_transients != null)
+            {
+                _transients.SetActive(false);
+                DestroyView(_transients);
+                _transients = null;
+            }
+            _uiSource?.Stop();
+            _tracker.Reset();
+            _lastAnnouncement = BattleAnnouncementKind.None;
             foreach (PlayerPresentation player in _players.Values) if (player is not null) DestroyView(player.gameObject);
             foreach (GameObject projectile in _projectiles.Values) if (projectile is not null) DestroyView(projectile);
             _players.Clear();
@@ -183,6 +193,7 @@ namespace LockstepArena.Demo
         private void SpawnBurst(Vector3 position, Color color, short count, float speed, Material? material = null)
         {
             var effect = new GameObject("Presentation Burst");
+            effect.transform.SetParent(TransientRoot(), false);
             effect.transform.position = position;
             ParticleSystem particles = effect.AddComponent<ParticleSystem>();
             ParticleSystem.MainModule main = particles.main;
@@ -208,6 +219,7 @@ namespace LockstepArena.Demo
         {
             if (clip is null) return;
             var audio = new GameObject("Transient Battle Audio");
+            audio.transform.SetParent(TransientRoot(), false);
             audio.transform.position = position;
             AudioSource source = audio.AddComponent<AudioSource>();
             source.clip = clip;
@@ -218,6 +230,16 @@ namespace LockstepArena.Demo
             source.pitch = 0.97f + UnityEngine.Random.value * 0.06f;
             source.Play();
             Destroy(audio, clip.length + 0.1f);
+        }
+
+        private Transform TransientRoot()
+        {
+            if (_transients == null)
+            {
+                _transients = new GameObject("Battle Transients");
+                _transients.transform.SetParent(transform, false);
+            }
+            return _transients.transform;
         }
 
         private static ProjectileState FindProjectile(BattleState state, ulong id)

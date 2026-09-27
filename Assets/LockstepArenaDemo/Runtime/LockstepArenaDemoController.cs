@@ -29,6 +29,7 @@ namespace LockstepArena.Demo
         private TcpDemoClient? _client;
         private BattlePresenter? _presenter;
         private BattleHudView? _hud;
+        private BattleReplayPlayer? _replayPlayer;
         private string _lastError = string.Empty;
         private string? _pendingNickname;
         private string? _pendingHostRoomName;
@@ -45,6 +46,11 @@ namespace LockstepArena.Demo
         public string UserFacingError { get; private set; } = string.Empty;
         public string HostedLanAddress { get; private set; } = string.Empty;
         public bool OwnsLocalServer => _lanServerLauncher.OwnsServer;
+        public bool IsReplayMode => _replayPlayer is not null;
+        public BattleReplayPlayer? ReplayPlayer => _replayPlayer;
+        public bool CanWatchReplay => _client?.Phase == DemoClientPhase.Settlement &&
+            _client.Snapshot.SettlementVerified && _client.RetainedReplay is not null &&
+            _client.RetainedReplay.AuthoritativeFrames.Count > 0;
 
         private void Awake()
         {
@@ -66,6 +72,7 @@ namespace LockstepArena.Demo
             try
             {
                 SynchronizeScene();
+                if (IsReplayMode && !CanWatchReplay) ExitReplay();
                 if (_client is null || _client.Phase == DemoClientPhase.Disconnected ||
                     _client.Phase == DemoClientPhase.Disposed) return;
                 if (_client.Phase == DemoClientPhase.Faulted)
@@ -74,26 +81,16 @@ namespace LockstepArena.Demo
                     return;
                 }
                 AdvanceShellFlow();
-                LocalInputSample? input = null;
-                if (_client.Phase == DemoClientPhase.InBattle)
+                if (IsReplayMode && keyboard is not null)
                 {
-                    if (ConsumePredictionTick(Time.unscaledDeltaTime)) input = ReadGameplayInput();
+                    if (keyboard.escapeKey.wasPressedThisFrame) ExitReplay();
+                    else if (keyboard.spaceKey.wasPressedThisFrame) _replayPlayer!.TogglePause();
                 }
-                else
-                {
-                    _predictionSeconds = 0d;
-                }
+                LocalInputSample? input = CollectGameplayInput(Time.unscaledDeltaTime);
                 _client.PumpOnce(input);
                 AdvanceShellFlow();
                 SynchronizeScene();
-                if (IsBattlePhase(_client.Phase) && _client.PredictedBattleState is not null)
-                {
-                    BattleState state = _client.PredictedBattleState;
-                    ushort? visualAim = _client.Phase == DemoClientPhase.InBattle &&
-                        _client.LocalPlayerSlot.HasValue ? GetCurrentAim() : null;
-                    EnsurePresenter().Present(state, _client.LocalPlayerSlot, visualAim);
-                    EnsureHud().Present(state, _client.Phase, _client.Snapshot, ReturnToLobby);
-                }
+                AdvanceBattlePresentation(Time.unscaledDeltaTime);
             }
             catch (Exception exception)
             {
@@ -103,6 +100,49 @@ namespace LockstepArena.Demo
                     FailShell(exception);
                 }
             }
+        }
+
+        private LocalInputSample? CollectGameplayInput(double elapsedSeconds)
+        {
+            if (IsReplayMode || _client?.Phase != DemoClientPhase.InBattle)
+            {
+                _predictionSeconds = 0d;
+                return null;
+            }
+            return ConsumePredictionTick(elapsedSeconds) ? ReadGameplayInput() : null;
+        }
+
+        private void AdvanceBattlePresentation(double elapsedSeconds)
+        {
+            if (IsReplayMode && !CanWatchReplay) ExitReplay();
+            if (_replayPlayer is not null)
+            {
+                _replayPlayer.AdvanceTime(elapsedSeconds);
+                EnsurePresenter().Present(_replayPlayer.CurrentState, null);
+                EnsureHud().PresentReplay(_replayPlayer, ExitReplay);
+            }
+            else if (_client is not null && IsBattlePhase(_client.Phase) && _client.PredictedBattleState is not null)
+            {
+                BattleState state = _client.PredictedBattleState;
+                ushort? visualAim = _client.Phase == DemoClientPhase.InBattle &&
+                    _client.LocalPlayerSlot.HasValue ? GetCurrentAim() : null;
+                EnsurePresenter().Present(state, _client.LocalPlayerSlot, visualAim);
+                EnsureHud().Present(state, _client.Phase, _client.Snapshot, ReturnToLobby, CanWatchReplay, WatchReplay);
+            }
+        }
+
+        public void WatchReplay()
+        {
+            if (!CanWatchReplay) return;
+            _presenter?.Clear();
+            _predictionSeconds = 0d;
+            _replayPlayer = new BattleReplayPlayer(_client!.RetainedReplay!);
+        }
+
+        public void ExitReplay()
+        {
+            _replayPlayer = null;
+            _presenter?.Clear();
         }
 
         private void AdvanceShellFlow()
@@ -404,6 +444,7 @@ namespace LockstepArena.Demo
         public void ReturnToLobby()
         {
             RequireClient().ReturnToLobby();
+            ExitReplay();
         }
 
         public bool TryConsumeCommandRejection(out string message)
@@ -428,6 +469,7 @@ namespace LockstepArena.Demo
             }
 
             ++_shellFlowGeneration;
+            _replayPlayer = null;
             _client?.Dispose();
             _client = null;
             _lanServerLauncher.StopOwned();
@@ -469,6 +511,7 @@ namespace LockstepArena.Demo
 
         private void FailShell(Exception exception)
         {
+            ExitReplay();
             _lastError = exception.ToString();
             UserFacingError = HumanizeShellError(exception);
             ShellStage = ShellConnectionStage.Failed;

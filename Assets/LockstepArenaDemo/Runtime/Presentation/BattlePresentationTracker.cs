@@ -86,6 +86,18 @@ namespace LockstepArena.Demo
             _hasPrevious = false;
         }
 
+        public void Reset()
+        {
+            ResetRoundObservation();
+            _seenSpawns.Clear();
+            _spawnOrder.Clear();
+            _seenRemovals.Clear();
+            _removalOrder.Clear();
+            _seenDamage.Clear();
+            _damageOrder.Clear();
+            Array.Clear(_previousHitPoints, 0, _previousHitPoints.Length);
+        }
+
         private static bool Remember<T>(T identity, HashSet<T> identities, Queue<T> order)
         {
             if (!identities.Add(identity)) return false;
