@@ -89,6 +89,7 @@ namespace LockstepArena.Client.Demo
 
         public DemoClientPhase Phase => _phase;
         public BattleReplaySnapshot? RetainedReplay => _retainedReplay;
+        public uint? InputDelayTicks => _preparing?.Bootstrap?.InputDelayTicks;
         public BattleState? PredictedBattleState => _battleRuntime?.PredictedState ?? _lastBattleState ?? _battleInitialState;
         public BattleState? AuthoritativeBattleState => _battleRuntime?.AuthoritativeState ?? _lastBattleState ?? _battleInitialState;
         public PlayerSlot? LocalPlayerSlot => _preparing is null

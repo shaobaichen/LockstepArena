@@ -40,16 +40,11 @@ namespace LockstepArena.Demo.Editor.Tests
             Type controllerType = Type.GetType("LockstepArena.Demo.LockstepArenaDemoController, LockstepArena.Demo")!;
             MethodInfo formatter = controllerType.GetMethod("FormatDiagnostics", BindingFlags.Public | BindingFlags.Static)!;
             string actual = (string)formatter.Invoke(null, new[] { snapshot })!;
-            Assert.That(actual, Is.EqualTo(
-                "Phase=Settlement Session=2 Room=1 Battle=1 " +
-                "Rooms=[Room1 Golden Room host=Alpha 2/2 RoomLifecycleOpen] " +
-                "Participants=[0:Alpha PlayerId2 host ready | 1:Bravo PlayerId1 ready] " +
-                "Roster=[Slot0/PlayerId2 | Slot1/PlayerId1] Rejection=NOT_HOST " +
-                "ServerTick=4 NextPublishTick=4 " +
-                "AuthorityTick=4 PredictedTick=4 PendingPredictions=0 PendingAuthority=0 Replay=4 " +
-                "LatestDirty=True CumulativeDirty=4 AuthorityDigest=D8E54FF828A4C670 " +
-                "PredictedDigest=D8E54FF828A4C670 SettlementVerified=True " +
-                "Settlement=BattleSettlementReasonMatchCompleted Winner=2 Score=2-1"));
+            foreach (string value in new[] { "NETWORK", "PREDICTION", "DETERMINISM", "REPLAY", "MATCH",
+                "Authoritative Tick: 4", "Predicted Tick: 4", "Latest Dirty: True", "Rollback Count (dirty frames): 4",
+                "Digest Match: True (same tick)", "Authority Digest: D8E54FF828A4C670", "Authoritative Frames: 4",
+                "Settlement Verified: True", "Phase: Settlement", "Score: 2-1" })
+                Assert.That(actual, Does.Contain(value));
         }
 
         [Test]

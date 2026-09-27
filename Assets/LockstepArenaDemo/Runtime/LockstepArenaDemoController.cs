@@ -309,8 +309,9 @@ namespace LockstepArena.Demo
         {
             if (_instance != this) return;
             if (!_debugVisible) return;
-            GUILayout.BeginArea(new Rect(16, Screen.height - 250, 720, 230), GUI.skin.box);
-            if (_debugVisible && _client is not null) GUILayout.TextArea(FormatDiagnostics(_client.Snapshot));
+            GUILayout.BeginArea(new Rect(16, Mathf.Max(140, Screen.height - 440), Mathf.Min(780, Screen.width - 32), 420), GUI.skin.box);
+            if (_debugVisible && _client is not null)
+                GUILayout.Label(LockstepDiagnosticsFormatter.Format(_client.Snapshot, _replayPlayer, _client.InputDelayTicks));
             if (_debugVisible) GUILayout.Label(_aimDiagnostic);
             if (_debugVisible && _lastError.Length > 0) GUILayout.Label("Error: " + _lastError);
             GUILayout.EndArea();
@@ -349,16 +350,7 @@ namespace LockstepArena.Demo
 
         public static string FormatDiagnostics(DemoClientSnapshot snapshot)
         {
-            if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
-            return $"Phase={snapshot.Phase} Session={snapshot.SessionId} Room={snapshot.RoomId} Battle={snapshot.BattleId} " +
-                $"Rooms=[{snapshot.RoomList}] Participants=[{snapshot.RoomParticipants}] Roster=[{snapshot.BattleRoster}] " +
-                $"Rejection={snapshot.LastRejection} ServerTick={snapshot.ServerStateTick} NextPublishTick={snapshot.NextPublishTick} " +
-                $"AuthorityTick={snapshot.AuthoritativeTick} PredictedTick={snapshot.PredictedTick} " +
-                $"PendingPredictions={snapshot.PendingPredictionCount} PendingAuthority={snapshot.PendingAuthoritativeFrameCount} " +
-                $"Replay={snapshot.ReplayFrameCount} LatestDirty={snapshot.LatestDirty} CumulativeDirty={snapshot.CumulativeDirtyFrameCount} " +
-                $"AuthorityDigest={snapshot.AuthoritativeDigest:X16} PredictedDigest={snapshot.PredictedDigest:X16} " +
-                $"SettlementVerified={snapshot.SettlementVerified} Settlement={snapshot.SettlementReason} " +
-                $"Winner={snapshot.WinnerPlayerId} Score={snapshot.Slot0RoundWins}-{snapshot.Slot1RoundWins}";
+            return LockstepDiagnosticsFormatter.Format(snapshot);
         }
 
         public async Task BeginHostLanAsync(string nickname, string roomName)
