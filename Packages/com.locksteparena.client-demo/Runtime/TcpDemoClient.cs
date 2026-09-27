@@ -70,6 +70,7 @@ namespace LockstepArena.Client.Demo
         private ulong _predictedDigest;
         private BattleSettlementEventMessage? _pendingSettlement;
         private bool _settlementVerified;
+        private BattleReplaySnapshot? _retainedReplay;
         private BattleSettlementReasonMessage _settlementReason;
         private ulong _winnerPlayerId;
         private uint _slot0RoundWins;
@@ -87,6 +88,7 @@ namespace LockstepArena.Client.Demo
         }
 
         public DemoClientPhase Phase => _phase;
+        public BattleReplaySnapshot? RetainedReplay => _retainedReplay;
         public BattleState? PredictedBattleState => _battleRuntime?.PredictedState ?? _lastBattleState ?? _battleInitialState;
         public BattleState? AuthoritativeBattleState => _battleRuntime?.AuthoritativeState ?? _lastBattleState ?? _battleInitialState;
         public PlayerSlot? LocalPlayerSlot => _preparing is null
@@ -222,6 +224,7 @@ namespace LockstepArena.Client.Demo
         {
             RequirePhase(DemoClientPhase.Settlement);
             Queue(new ClientControlCommandMessage { ReturnToLobby = new ReturnToLobbyCommandMessage() });
+            _retainedReplay = null;
         }
 
         public void Exit()
@@ -426,6 +429,7 @@ namespace LockstepArena.Client.Demo
 
         private void BeginBattleAttachment(BattlePreparingEventMessage preparing)
         {
+            _retainedReplay = null;
             if (preparing is null || preparing.Bootstrap is null) throw new InvalidDataException("Battle preparation is incomplete.");
             if (preparing.BattleId == 0 || preparing.BattleId != preparing.Bootstrap.BattleId) throw new InvalidDataException("Battle preparation identity is invalid.");
             if (preparing.BattleTicket.Length != 16) throw new InvalidDataException("Battle ticket must contain exactly 16 bytes.");
@@ -612,6 +616,7 @@ namespace LockstepArena.Client.Demo
                 if (settlement.FinalState is not null) throw new InvalidDataException("Aborted settlement cannot claim a final state.");
                 _pendingSettlement = null;
                 _settlementVerified = false;
+                _retainedReplay = null;
                 DisposeBattleRuntime();
                 _phase = DemoClientPhase.Settlement;
                 return;
@@ -735,6 +740,7 @@ namespace LockstepArena.Client.Demo
             RefreshBattleDiagnostics();
             _pendingSettlement = null;
             _settlementVerified = true;
+            _retainedReplay = runtime.CaptureReplaySnapshot();
             DisposeBattleRuntime();
             _lastBattleState = retainedState;
             _phase = DemoClientPhase.Settlement;
@@ -772,6 +778,7 @@ namespace LockstepArena.Client.Demo
 
         private void ClearRoomAndBattlePresentation()
         {
+            _retainedReplay = null;
             DisposeBattleRuntime();
             _roomId = 0;
             _roomName = string.Empty;
@@ -798,6 +805,7 @@ namespace LockstepArena.Client.Demo
 
         private void CompleteExit()
         {
+            _retainedReplay = null;
             DisposeBattleRuntime();
             _stream?.Dispose();
             _client?.Dispose();

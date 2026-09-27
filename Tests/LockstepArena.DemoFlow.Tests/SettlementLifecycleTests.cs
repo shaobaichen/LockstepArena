@@ -26,6 +26,7 @@ namespace LockstepArena.DemoFlow.Tests
             new TestCase(nameof(MatchingSettlementVerifiesCompleteStateAndDigest), MatchingSettlementVerifiesCompleteStateAndDigest),
             new TestCase(nameof(SettlementMismatchOrImpossibleTickFailsStop), SettlementMismatchOrImpossibleTickFailsStop),
             new TestCase(nameof(NormalSettlementDisposesBattleButPreservesControlSession), NormalSettlementDisposesBattleButPreservesControlSession),
+            new TestCase(nameof(OnlyVerifiedSettlementRetainsReplayUntilLobbyReturn), OnlyVerifiedSettlementRetainsReplayUntilLobbyReturn),
             new TestCase(nameof(BattleFailureAbortsRoomAndNotifiesSurvivingControls), BattleFailureAbortsRoomAndNotifiesSurvivingControls),
             new TestCase(nameof(GameplayMatchEndedCreatesWinnerAndScoreSettlement), GameplayMatchEndedCreatesWinnerAndScoreSettlement),
             new TestCase(nameof(GameplayBattleDisconnectSettlesAsForfeit), GameplayBattleDisconnectSettlesAsForfeit),
@@ -112,6 +113,38 @@ namespace LockstepArena.DemoFlow.Tests
             impossible.Enqueue(CreateSettlement(1UL, expectedFinal, StateDigest.Compute(expectedFinal)));
             TestAssert.Throws<InvalidDataException>(() => impossible.Client.PumpOnce(null));
             TestAssert.Equal(DemoClientPhase.Faulted, impossible.Client.Phase);
+        }
+
+        private static void OnlyVerifiedSettlementRetainsReplayUntilLobbyReturn()
+        {
+            BattleState state = CreateState(1U);
+            using var fixture = new ClientFixture(state, 1U);
+            TestAssert.True(fixture.Client.RetainedReplay is null);
+            fixture.Enqueue(CreateSettlement(1UL, state, StateDigest.Compute(state)));
+            fixture.Client.PumpOnce(null);
+            BattleReplaySnapshot snapshot = fixture.Client.RetainedReplay!;
+            TestAssert.True(snapshot is not null);
+            TestAssert.True(GetPrivateField(fixture.Client, "_battleRuntime") is null);
+            BattleState initial = snapshot!.InitialState;
+            TestAssert.True(BattleStateValueComparer.HaveSameValue(state, initial));
+            fixture.Client.ReturnToLobby();
+            TestAssert.True(fixture.Client.RetainedReplay is null);
+            fixture.Enqueue(new ServerControlEventMessage { LobbyEntered = new LobbyEnteredEventMessage() });
+            fixture.Client.PumpOnce(null);
+            TestAssert.Equal(DemoClientPhase.Lobby, fixture.Client.Phase);
+            TestAssert.True(fixture.Client.RetainedReplay is null);
+
+            using var mismatch = new ClientFixture(state, 1U);
+            mismatch.Enqueue(CreateSettlement(1UL, state, StateDigest.Compute(state) ^ 1UL));
+            TestAssert.Throws<InvalidDataException>(() => mismatch.Client.PumpOnce(null));
+            TestAssert.True(mismatch.Client.RetainedReplay is null);
+            using var aborted = new ClientFixture(state, 1U);
+            aborted.Enqueue(new ServerControlEventMessage { BattleSettlement = new BattleSettlementEventMessage
+            {
+                BattleId = 1UL, Reason = BattleSettlementReasonMessage.BattleSettlementReasonAborted,
+            } });
+            aborted.Client.PumpOnce(null);
+            TestAssert.True(aborted.Client.RetainedReplay is null);
         }
 
         private static void NormalSettlementDisposesBattleButPreservesControlSession()

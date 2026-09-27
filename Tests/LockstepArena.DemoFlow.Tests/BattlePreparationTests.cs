@@ -344,12 +344,39 @@ namespace LockstepArena.DemoFlow.Tests
             TestAssert.Equal(0U, host.Snapshot.Slot1RoundWins);
             TestAssert.Equal(BattlePhase.MatchEnded, host.PredictedBattleState!.Phase);
 
+            BattleReplaySnapshot replay = host.RetainedReplay!;
+            TestAssert.True(replay is not null);
+            BattleState replayInitial = replay!.InitialState;
+            System.Collections.Generic.IReadOnlyList<FrameData> replayFrames = replay.AuthoritativeFrames;
+            var offline = new BattleSimulation(replayInitial);
+            foreach (FrameData frame in replayFrames) offline.Step(frame);
+            TestAssert.Equal(host.Snapshot.ReplayFrameCount, replayFrames.Count);
+            TestAssert.True(replayFrames.Count > 0);
+            // Settlement display may retain a terminal prediction ahead of authority; replay must not.
+            TestAssert.Equal(host.Snapshot.AuthoritativeTick, offline.State.Tick);
+            TestAssert.Equal(BattlePhase.MatchEnded, offline.State.Phase);
+            TestAssert.Equal(host.Snapshot.AuthoritativeDigest, StateDigest.Compute(offline.State));
+
             host.ReturnToLobby();
             guest.ReturnToLobby();
             PumpUntil(server, host, guest, () =>
                 host.Phase == DemoClientPhase.Lobby && guest.Phase == DemoClientPhase.Lobby);
             TestAssert.Equal(0UL, host.Snapshot.RoomId);
             TestAssert.Equal(0UL, guest.Snapshot.RoomId);
+            TestAssert.True(host.RetainedReplay is null);
+            TestAssert.True(guest.RetainedReplay is null);
+            host.CreateRoom("SecondRoom", 2);
+            PumpUntil(server, host, guest, () => host.Phase == DemoClientPhase.Room);
+            guest.JoinRoom(host.Snapshot.RoomId);
+            PumpUntil(server, host, guest, () => guest.Phase == DemoClientPhase.Room);
+            host.SetReady(true);
+            guest.SetReady(true);
+            Pump(server, host, guest, 20);
+            host.StartBattle();
+            PumpUntil(server, host, guest, () => host.Phase == DemoClientPhase.PreparingBattle && guest.Phase == DemoClientPhase.PreparingBattle);
+            TestAssert.True(host.RetainedReplay is null);
+            TestAssert.True(guest.RetainedReplay is null);
+            TestAssert.Equal(0U, host.PredictedBattleState!.Tick);
         }
 
         private static TcpClient Attach(TcpDemoServer server, byte[] ticket)

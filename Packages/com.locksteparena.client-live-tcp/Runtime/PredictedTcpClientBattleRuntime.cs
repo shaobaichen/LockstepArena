@@ -220,6 +220,13 @@ namespace LockstepArena.Client.LiveTcp
             }
         }
 
+        public BattleReplaySnapshot CaptureReplaySnapshot()
+        {
+            ThrowIfDisposed();
+            ThrowIfFaulted();
+            return new BattleReplaySnapshot(_initialState, _replay);
+        }
+
         public BattleState ReconstructAuthoritativeState()
         {
             ThrowIfDisposed();

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Reflection;
 using Google.Protobuf;
@@ -44,6 +45,7 @@ namespace LockstepArena.LivePrediction.Tests
             new TestCase(nameof(ReplayCapacityRejectionAdmitsNoCandidateFrame), ReplayCapacityRejectionAdmitsNoCandidateFrame),
             new TestCase(nameof(ReplayHistoryNeverEvictsOrGrowsBeyondCapacity), ReplayHistoryNeverEvictsOrGrowsBeyondCapacity),
             new TestCase(nameof(ReplayReconstructsAuthoritativeStateAndDigest), ReplayReconstructsAuthoritativeStateAndDigest),
+            new TestCase(nameof(CapturedReplaySurvivesDisposeWithoutSharingMutableHistory), CapturedReplaySurvivesDisposeWithoutSharingMutableHistory),
             new TestCase(nameof(GameplayAuthorityReplayReconstructsFullStateAndDigest), GameplayAuthorityReplayReconstructsFullStateAndDigest),
             new TestCase(nameof(ReplayCorruptionEntersStickyFailStop), ReplayCorruptionEntersStickyFailStop),
         };
@@ -435,6 +437,36 @@ namespace LockstepArena.LivePrediction.Tests
             TestAssert.Equal(
                 StateDigest.Compute(fixture.Runtime.AuthoritativeState),
                 StateDigest.Compute(reconstructed));
+        }
+
+        private static void CapturedReplaySurvivesDisposeWithoutSharingMutableHistory()
+        {
+            using var fixture = new PredictedClientFixture(1);
+            fixture.SendAuthorities(
+                SinglePlayerFrame(fixture.State.Roster, 100U, 1),
+                SinglePlayerFrame(fixture.State.Roster, 101U, 2));
+            fixture.Runtime.Update(null);
+            BattleReplaySnapshot snapshot = fixture.Runtime.CaptureReplaySnapshot();
+            BattleState initial = snapshot.InitialState;
+            IReadOnlyList<FrameData> frames = snapshot.AuthoritativeFrames;
+            TestAssert.Same(fixture.State, initial);
+            TestAssert.Equal(2, frames.Count);
+            TestAssert.Equal(100U, frames[0].Tick);
+            TestAssert.Equal(101U, frames[1].Tick);
+            TestAssert.True(frames is not FrameData[]);
+            TestAssert.Throws<NotSupportedException>(() => ((IList<FrameData>)frames)[0] = frames[1]);
+            fixture.SendAuthority(SinglePlayerFrame(fixture.State.Roster, 102U, 3));
+            fixture.Runtime.Update(null);
+            TestAssert.Equal(2, frames.Count);
+            fixture.Runtime.Dispose();
+            var simulation = new BattleSimulation(initial);
+            foreach (FrameData frame in frames) simulation.Step(frame);
+            TestAssert.Equal(102U, simulation.State.Tick);
+            var expected = new BattleSimulation(fixture.State);
+            expected.Step(SinglePlayerFrame(fixture.State.Roster, 100U, 1));
+            expected.Step(SinglePlayerFrame(fixture.State.Roster, 101U, 2));
+            AssertStatesEqual(expected.State, simulation.State);
+            TestAssert.Equal(StateDigest.Compute(expected.State), StateDigest.Compute(simulation.State));
         }
 
         private static void GameplayAuthorityReplayReconstructsFullStateAndDigest()
